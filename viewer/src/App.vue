@@ -4,30 +4,40 @@
       <div class="panel-header">
         <div>
           <p class="eyebrow">Lane Relay Replay</p>
-          <h1>Action Replay Viewer</h1>
+          <h1>{{ uiLabels.appTitle }}</h1>
         </div>
         <div class="result-badge">{{ resultLabel }}</div>
       </div>
 
-      <p class="lead">
-        BattleEngine が生成した Replay を Action 単位で表示します。Viewer は戦闘計算を行いません。
-      </p>
+      <p class="lead">{{ uiLabels.lead }}</p>
 
       <div class="toolbar">
-        <button type="button" :disabled="isBusy || cursor === 0" @click="goFirst">First</button>
-        <button type="button" :disabled="isBusy || cursor === 0" @click="goPrevious">Prev</button>
-        <button type="button" :disabled="isBusy || isAtLast" @click="goNext">Next</button>
-        <button type="button" :disabled="isBusy || isAtLast" @click="stepBy(10)">+10</button>
-        <button type="button" :disabled="isBusy || isAtLast" @click="stepBy(100)">+100</button>
-        <button type="button" :disabled="isBusy || isAtLast" @click="goLast">Last</button>
+        <button type="button" :disabled="isBusy || cursor === 0" @click="goFirst">
+          {{ uiLabels.first }}
+        </button>
+        <button type="button" :disabled="isBusy || cursor === 0" @click="goPrevious">
+          {{ uiLabels.previous }}
+        </button>
+        <button type="button" :disabled="isBusy || isAtLast" @click="goNext">
+          {{ uiLabels.next }}
+        </button>
+        <button type="button" :disabled="isBusy || isAtLast" @click="stepBy(10)">
+          {{ uiLabels.tenForward }}
+        </button>
+        <button type="button" :disabled="isBusy || isAtLast" @click="stepBy(100)">
+          {{ uiLabels.hundredForward }}
+        </button>
+        <button type="button" :disabled="isBusy || isAtLast" @click="goLast">
+          {{ uiLabels.last }}
+        </button>
         <button type="button" :disabled="isBusy || !replay" @click="toggleAutoplay">
-          {{ autoplay ? 'Pause' : 'Auto' }}
+          {{ autoplay ? uiLabels.pause : uiLabels.autoplay }}
         </button>
       </div>
 
       <div class="jump-row">
         <label>
-          Jump
+          {{ uiLabels.jump }}
           <input
             v-model.number="jumpTarget"
             :max="lastCursor"
@@ -37,20 +47,21 @@
           />
         </label>
         <label>
-          Speed
+          {{ uiLabels.speed }}
           <select v-model.number="speedMs">
-            <option :value="1200">Slow</option>
-            <option :value="700">Normal</option>
-            <option :value="250">Fast</option>
+            <option :value="1200">{{ uiLabels.slow }}</option>
+            <option :value="700">{{ uiLabels.normal }}</option>
+            <option :value="250">{{ uiLabels.fast }}</option>
           </select>
         </label>
       </div>
 
       <p v-if="errorMessage" class="error-text">{{ errorMessage }}</p>
-      <p v-else-if="!replay" class="loading-text">loading replay</p>
+      <p v-else-if="!replay" class="loading-text">{{ uiLabels.loading }}</p>
 
-      <template v-if="currentSnapshot">
+      <template v-if="currentSnapshot && replay">
         <ActionSummary
+          :catalog="replay.display_catalog"
           :events="currentEvents"
           :last-cursor="lastCursor"
           :snapshot="currentSnapshot"
@@ -60,14 +71,19 @@
           <ParticipantCard
             v-for="participant in participantList"
             :key="participant.participant_id"
+            :catalog="replay.display_catalog"
             :is-actor="participant.participant_id === currentSnapshot.acted_actor_id"
             :is-next="participant.participant_id === currentSnapshot.next_actor_id"
-            :is-target="targetIds.has(participant.participant_id)"
             :participant="participant"
+            :primary-target="primaryTargetInfo"
           />
         </section>
 
-        <EventTimeline :events="currentEvents" />
+        <DebugEventList
+          :catalog="replay.display_catalog"
+          :events="currentEvents"
+          :snapshot="currentSnapshot"
+        />
       </template>
     </section>
   </main>
@@ -78,10 +94,12 @@ import { computed, onMounted, ref } from 'vue'
 
 import { simulateBattle } from './api/battleApi'
 import ActionSummary from './components/ActionSummary.vue'
-import EventTimeline from './components/EventTimeline.vue'
+import DebugEventList from './components/DebugEventList.vue'
 import ParticipantCard from './components/ParticipantCard.vue'
 import { useReplayController } from './composables/useReplayController'
 import { m1Scenario } from './fixtures/m1Scenario'
+import { primaryTarget, visibleResultLabel } from './presentation/battlePresenter'
+import { uiLabels } from './presentation/ja'
 import type { BattleReplay } from './types/battleReplay'
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
@@ -107,15 +125,7 @@ const {
   toggleAutoplay,
 } = useReplayController(replay)
 
-const resultLabel = computed(() => {
-  if (!replay.value) {
-    return 'loading'
-  }
-  if (!isAtLast.value) {
-    return 'running'
-  }
-  return `${replay.value.summary.result} / ${replay.value.summary.end_reason}`
-})
+const resultLabel = computed(() => visibleResultLabel(replay.value, isAtLast.value))
 
 const participantList = computed(() =>
   Object.values(currentSnapshot.value?.participants ?? {}).sort((left, right) =>
@@ -129,14 +139,7 @@ const currentEvents = computed(() =>
   ),
 )
 
-const targetIds = computed(
-  () =>
-    new Set(
-      currentEvents.value
-        .map((event) => event.target_id)
-        .filter((targetId): targetId is string => targetId !== null),
-    ),
-)
+const primaryTargetInfo = computed(() => primaryTarget(currentEvents.value))
 
 async function loadReplay(): Promise<void> {
   errorMessage.value = ''
@@ -144,7 +147,7 @@ async function loadReplay(): Promise<void> {
     replay.value = await simulateBattle(apiBaseUrl, m1Scenario)
     resetCursor()
   } catch {
-    errorMessage.value = 'failed to load replay'
+    errorMessage.value = uiLabels.loadFailed
   }
 }
 

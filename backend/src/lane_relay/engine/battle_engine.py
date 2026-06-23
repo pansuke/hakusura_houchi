@@ -42,8 +42,8 @@ class BattleParticipantSetup:
     initial_hp: int
     initial_mp: int
     ds: int
-    mrg: int
-    hrg: int
+    mpr: int
+    hpr: int
     deck: list[BattleCard]
 
 
@@ -70,15 +70,17 @@ class BattleEvent:
 @dataclass(frozen=True)
 class ParticipantSnapshot:
     participant_id: str
+    character_master_id: str
     side: Side
     hp: int
     max_hp: int
     mp: int
     max_mp: int
     alive: bool
+    ds: int
+    mpr: int
+    hpr: int
     draw_gauge: int
-    mana_gauge: int
-    health_gauge: int
     hand: list[str]
     draw_pile: list[str]
     discard_pile: list[str]
@@ -123,6 +125,7 @@ class BattleReplay:
     events: list[BattleEvent]
     snapshots: list[BattleSnapshot]
     summary: BattleSummary
+    display_catalog: dict[str, object]
 
 
 @dataclass
@@ -132,8 +135,6 @@ class ParticipantRuntime:
     mp: int
     alive: bool
     draw_gauge: int = 0
-    mana_gauge: int = 0
-    health_gauge: int = 0
     hand: list[BattleCard] = field(default_factory=list)
     draw_pile: list[BattleCard] = field(default_factory=list)
     discard_pile: list[BattleCard] = field(default_factory=list)
@@ -217,6 +218,7 @@ class BattleEngine:
             events=recorder.events,
             snapshots=snapshots,
             summary=self._summary(runtime, recorder, snapshots),
+            display_catalog=self._display_catalog(scenario),
         )
 
     def _validate_scenario(self, scenario: BattleScenario) -> None:
@@ -245,6 +247,12 @@ class BattleEngine:
                 raise BattleScenarioError("initial_hp must be between 1 and max_hp.")
             if participant.initial_mp < 0 or participant.initial_mp > participant.max_mp:
                 raise BattleScenarioError("initial_mp must be between 0 and max_mp.")
+            if participant.ds < 0:
+                raise BattleScenarioError("ds must be greater than or equal to 0.")
+            if participant.mpr < 0:
+                raise BattleScenarioError("mpr must be greater than or equal to 0.")
+            if participant.hpr < 0:
+                raise BattleScenarioError("hpr must be greater than or equal to 0.")
             for card in participant.deck:
                 if card.mp_cost < 0:
                     raise BattleScenarioError("card mp_cost must be greater than or equal to 0.")
@@ -273,9 +281,10 @@ class BattleEngine:
     def _run_action(self, runtime: BattleRuntime, recorder: EventRecorder, actor_id: str) -> None:
         action_index = runtime.action_index
         recorder.record(action_index, "action_started", actor_id=actor_id)
-        self._update_gauges(runtime, recorder)
         actor = runtime.participants[actor_id]
         if actor.alive:
+            self._apply_action_right_recovery(runtime, recorder, actor)
+            self._increase_draw_gauge(runtime, recorder, actor)
             self._attempt_card(runtime, recorder, actor)
         completion = self._completion_result(runtime)
         if completion is not None:
@@ -290,13 +299,27 @@ class BattleEngine:
         if completion is not None:
             self._record_battle_completed(runtime, recorder)
 
-    def _update_gauges(self, runtime: BattleRuntime, recorder: EventRecorder) -> None:
-        for participant in runtime.participants.values():
-            if not participant.alive:
-                continue
-            self._increase_draw_gauge(runtime, recorder, participant)
-            self._increase_mana_gauge(runtime, recorder, participant)
-            self._increase_health_gauge(runtime, recorder, participant)
+    def _apply_action_right_recovery(
+        self,
+        runtime: BattleRuntime,
+        recorder: EventRecorder,
+        participant: ParticipantRuntime,
+    ) -> None:
+        self._heal(
+            runtime,
+            recorder,
+            participant,
+            participant,
+            participant.setup.hpr,
+            reason="action_right",
+        )
+        self._recover_mana(
+            runtime,
+            recorder,
+            participant,
+            participant.setup.mpr,
+            reason="action_right",
+        )
 
     def _increase_draw_gauge(
         self,
@@ -320,58 +343,6 @@ class BattleEngine:
                 "gain": participant.setup.ds,
                 "trigger_count": trigger_count,
                 "after": participant.draw_gauge,
-                "blocked_reason": None,
-            },
-        )
-
-    def _increase_mana_gauge(
-        self,
-        runtime: BattleRuntime,
-        recorder: EventRecorder,
-        participant: ParticipantRuntime,
-    ) -> None:
-        before = participant.mana_gauge
-        participant.mana_gauge += participant.setup.mrg
-        trigger_count = participant.mana_gauge // GAUGE_THRESHOLD
-        while participant.mana_gauge >= GAUGE_THRESHOLD:
-            participant.mana_gauge -= GAUGE_THRESHOLD
-            self._gain_mana(runtime, recorder, participant, 1, reason="mana_gauge")
-        recorder.record(
-            runtime.action_index,
-            "gauge_changed",
-            actor_id=participant.setup.participant_id,
-            payload={
-                "gauge_type": "mana",
-                "before": before,
-                "gain": participant.setup.mrg,
-                "trigger_count": trigger_count,
-                "after": participant.mana_gauge,
-                "blocked_reason": None,
-            },
-        )
-
-    def _increase_health_gauge(
-        self,
-        runtime: BattleRuntime,
-        recorder: EventRecorder,
-        participant: ParticipantRuntime,
-    ) -> None:
-        before = participant.health_gauge
-        participant.health_gauge += participant.setup.hrg
-        trigger_count = participant.health_gauge // GAUGE_THRESHOLD
-        while participant.health_gauge >= GAUGE_THRESHOLD:
-            participant.health_gauge -= GAUGE_THRESHOLD
-            self._heal(runtime, recorder, participant, participant, 1, reason="health_gauge")
-        recorder.record(
-            runtime.action_index,
-            "gauge_changed",
-            actor_id=participant.setup.participant_id,
-            payload={
-                "gauge_type": "health",
-                "before": before,
-                "gain": participant.setup.hrg,
-                "trigger_count": trigger_count,
-                "after": participant.health_gauge,
                 "blocked_reason": None,
             },
         )
@@ -411,21 +382,29 @@ class BattleEngine:
         actor: ParticipantRuntime,
         card: BattleCard,
     ) -> None:
+        primary_target = self._target_for_card(runtime, actor, card)
         actor.hand.remove(card)
         actor.discard_pile.append(card)
         actor.cards_used += 1
         if card.mp_cost:
+            before_mp = actor.mp
             actor.mp -= card.mp_cost
             recorder.record(
                 runtime.action_index,
                 "mana_spent",
                 actor_id=actor.setup.participant_id,
-                payload={"card_id": card.card_id, "amount": card.mp_cost, "mp": actor.mp},
+                payload={
+                    "card_id": card.card_id,
+                    "before": before_mp,
+                    "amount": card.mp_cost,
+                    "after": actor.mp,
+                },
             )
         recorder.record(
             runtime.action_index,
             "card_used",
             actor_id=actor.setup.participant_id,
+            target_id=primary_target.setup.participant_id if primary_target else None,
             payload={"card_id": card.card_id},
         )
         for effect in card.effects:
@@ -529,7 +508,37 @@ class BattleEngine:
             runtime.action_index,
             "mana_gained",
             actor_id=participant.setup.participant_id,
-            payload={"amount": participant.mp - before, "mp": participant.mp, "reason": reason},
+            payload={
+                "before": before,
+                "requested": amount,
+                "applied": participant.mp - before,
+                "after": participant.mp,
+                "reason": reason,
+            },
+        )
+
+    def _recover_mana(
+        self,
+        runtime: BattleRuntime,
+        recorder: EventRecorder,
+        participant: ParticipantRuntime,
+        amount: int,
+        reason: str,
+    ) -> None:
+        before = participant.mp
+        participant.mp = min(participant.setup.max_mp, participant.mp + amount)
+        recorder.record(
+            runtime.action_index,
+            "mana_recovered",
+            actor_id=participant.setup.participant_id,
+            target_id=participant.setup.participant_id,
+            payload={
+                "before": before,
+                "requested": amount,
+                "applied": participant.mp - before,
+                "after": participant.mp,
+                "reason": reason,
+            },
         )
 
     def _heal(
@@ -548,7 +557,13 @@ class BattleEngine:
             "health_recovered",
             actor_id=actor.setup.participant_id,
             target_id=target.setup.participant_id,
-            payload={"amount": target.hp - before, "hp": target.hp, "reason": reason},
+            payload={
+                "before": before,
+                "requested": amount,
+                "applied": target.hp - before,
+                "after": target.hp,
+                "reason": reason,
+            },
         )
 
     def _damage(
@@ -571,7 +586,12 @@ class BattleEngine:
             "damage_applied",
             actor_id=actor.setup.participant_id,
             target_id=target.setup.participant_id,
-            payload={"amount": actual_damage, "hp": target.hp},
+            payload={
+                "before": before,
+                "requested": amount,
+                "applied": actual_damage,
+                "after": target.hp,
+            },
         )
 
     def _emit_defeated_events(self, runtime: BattleRuntime, recorder: EventRecorder) -> None:
@@ -668,15 +688,17 @@ class BattleEngine:
             participants={
                 participant_id: ParticipantSnapshot(
                     participant_id=participant_id,
+                    character_master_id=participant.setup.character_master_id,
                     side=participant.setup.side,
                     hp=participant.hp,
                     max_hp=participant.setup.max_hp,
                     mp=participant.mp,
                     max_mp=participant.setup.max_mp,
                     alive=participant.alive,
+                    ds=participant.setup.ds,
+                    mpr=participant.setup.mpr,
+                    hpr=participant.setup.hpr,
                     draw_gauge=participant.draw_gauge,
-                    mana_gauge=participant.mana_gauge,
-                    health_gauge=participant.health_gauge,
                     hand=[card.card_id for card in participant.hand],
                     draw_pile=[card.card_id for card in participant.draw_pile],
                     discard_pile=[card.card_id for card in participant.discard_pile],
@@ -721,3 +743,51 @@ class BattleEngine:
                 for participant_id, participant in runtime.participants.items()
             },
         )
+
+    def _display_catalog(self, scenario: BattleScenario) -> dict[str, object]:
+        return {
+            "participants": {
+                participant.participant_id: {
+                    "name": self._participant_display_name(participant.participant_id),
+                }
+                for participant in scenario.participants
+            },
+            "cards": {
+                card.card_id: {
+                    "name": self._card_display_name(card.card_id),
+                    "mp_cost": card.mp_cost,
+                    "description": self._card_description(card),
+                }
+                for participant in scenario.participants
+                for card in participant.deck
+            },
+        }
+
+    def _participant_display_name(self, participant_id: str) -> str:
+        names = {
+            "ally_001": "戦士",
+            "enemy_001": "ゴブリン",
+        }
+        return names.get(participant_id, participant_id)
+
+    def _card_display_name(self, card_id: str) -> str:
+        names = {
+            "card_fire_ball": "火球",
+            "card_focus": "精神集中",
+            "card_recover": "治癒",
+            "card_claw": "ひっかき",
+        }
+        return names.get(card_id, card_id)
+
+    def _card_description(self, card: BattleCard) -> str:
+        descriptions: list[str] = []
+        for effect in card.effects:
+            if effect.effect_type == "damage":
+                descriptions.append(f"敵に{effect.value}ダメージ")
+            elif effect.effect_type == "heal":
+                descriptions.append(f"自身のHPを{effect.value}回復")
+            elif effect.effect_type == "gain_mana":
+                descriptions.append(f"自身のMPを{effect.value}回復")
+            elif effect.effect_type == "draw_card":
+                descriptions.append(f"カードを{effect.value}枚引く")
+        return " / ".join(descriptions)

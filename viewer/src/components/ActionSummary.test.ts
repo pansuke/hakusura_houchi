@@ -1,16 +1,26 @@
 /*
 テスト一覧:
-- Action #0は初期状態として要約する
-- card_usedはattempted targetを補完して要約する
-- 対象や数値がないEventは安全なデフォルトで表示する
-- 表示対象EventがないActionはカード未解決として要約する
+- Action #0は戦闘開始前として要約する
+- card_usedはCatalogの日本語カード名で要約する
+- HP・MP変化と次の行動者を表示する
+- 使用可能カードがない場合は理由を日本語で表示する
 */
 
 import { mount } from '@vue/test-utils'
 import { describe, expect, test } from 'vitest'
 
 import ActionSummary from './ActionSummary.vue'
-import type { BattleEvent, BattleSnapshot } from '../types/battleReplay'
+import type { BattleEvent, BattleSnapshot, DisplayCatalog } from '../types/battleReplay'
+
+const catalog: DisplayCatalog = {
+  participants: {
+    ally_001: { name: '戦士' },
+    enemy_001: { name: 'ゴブリン' },
+  },
+  cards: {
+    card_fire_ball: { name: '火球', mp_cost: 1, description: '敵に12ダメージ' },
+  },
+}
 
 const baseSnapshot: BattleSnapshot = {
   action_index: 1,
@@ -18,7 +28,42 @@ const baseSnapshot: BattleSnapshot = {
   battle_result: 'undecided',
   acted_actor_id: 'ally_001',
   next_actor_id: 'enemy_001',
-  participants: {},
+  participants: {
+    ally_001: {
+      participant_id: 'ally_001',
+      character_master_id: 'character_ally_001',
+      side: 'ally',
+      hp: 32,
+      max_hp: 32,
+      mp: 2,
+      max_mp: 5,
+      alive: true,
+      ds: 100,
+      mpr: 1,
+      hpr: 0,
+      draw_gauge: 0,
+      hand: [],
+      draw_pile: [],
+      discard_pile: [],
+    },
+    enemy_001: {
+      participant_id: 'enemy_001',
+      character_master_id: 'character_enemy_001',
+      side: 'enemy',
+      hp: 16,
+      max_hp: 28,
+      mp: 2,
+      max_mp: 3,
+      alive: true,
+      ds: 0,
+      mpr: 1,
+      hpr: 0,
+      draw_gauge: 0,
+      hand: [],
+      draw_pile: [],
+      discard_pile: [],
+    },
+  },
 }
 
 function event(
@@ -44,70 +89,48 @@ describe('ActionSummary', () => {
       props: {
         snapshot: { ...baseSnapshot, action_index: 0, acted_actor_id: null },
         events: [],
+        catalog,
         lastCursor: 2,
       },
     })
 
-    expect(wrapper.text()).toContain('Battle ready')
-    expect(wrapper.text()).toContain('Initial state before the first action.')
+    expect(wrapper.text()).toContain('戦闘開始前')
+    expect(wrapper.text()).toContain('最初の行動前の状態です。')
   })
 
-  test('summarizes action from events', () => {
+  test('summarizes card action in Japanese', () => {
     const wrapper = mount(ActionSummary, {
       props: {
         snapshot: baseSnapshot,
         events: [
-          event('card_attempted', { card_id: 'card_fire_ball' }, 'ally_001', 'enemy_001'),
-          event('card_used', { card_id: 'card_fire_ball' }, 'ally_001', null),
-          event('mana_spent', { amount: 1 }, 'ally_001', null),
-          event('damage_applied', { amount: 12 }),
-          event('health_recovered', { amount: 3 }),
-          event('mana_gained', { amount: 2 }, 'ally_001', null),
-          event('card_drawn', { card_id: 'card_focus' }, 'ally_001', null),
-          event('character_defeated', {}, 'enemy_001', null),
-          event('battle_completed', { result: 'ally_win' }, null, null),
+          event('mana_spent', { before: 3, amount: 1, after: 2 }, 'ally_001', null),
+          event('card_used', { card_id: 'card_fire_ball' }, 'ally_001', 'enemy_001'),
+          event('damage_applied', { before: 28, requested: 12, applied: 12, after: 16 }),
         ],
+        catalog,
         lastCursor: 2,
       },
     })
 
-    expect(wrapper.text()).toContain('ally_001 used card_fire_ball on enemy_001')
-    expect(wrapper.text()).toContain('ally_001 spent 1 MP')
-    expect(wrapper.text()).toContain('enemy_001 took 12 damage')
-    expect(wrapper.text()).toContain('enemy_001 recovered 3 HP')
-    expect(wrapper.text()).toContain('ally_001 gained 2 MP')
-    expect(wrapper.text()).toContain('ally_001 drew card_focus')
-    expect(wrapper.text()).toContain('enemy_001 was defeated')
-    expect(wrapper.text()).toContain('Battle completed: ally_win')
-    expect(wrapper.text()).toContain('Next: enemy_001')
+    expect(wrapper.text()).toContain('味方・戦士の行動')
+    expect(wrapper.text()).toContain('「火球」を使用')
+    expect(wrapper.text()).toContain('MP 3 → 2')
+    expect(wrapper.text()).toContain('敵・ゴブリンに12ダメージ')
+    expect(wrapper.text()).toContain('HP 28 → 16')
+    expect(wrapper.text()).toContain('次の行動：ゴブリン')
   })
 
-  test('uses safe fallback text for missing payloads', () => {
-    const wrapper = mount(ActionSummary, {
-      props: {
-        snapshot: { ...baseSnapshot, acted_actor_id: null },
-        events: [
-          event('card_used', {}, null, null),
-          event('damage_applied', {}, null, null),
-        ],
-        lastCursor: 2,
-      },
-    })
-
-    expect(wrapper.text()).toContain('Battle ready')
-    expect(wrapper.text()).toContain('system used -')
-    expect(wrapper.text()).toContain('target took 0 damage')
-  })
-
-  test('renders no card resolved fallback', () => {
+  test('renders unavailable card reason', () => {
     const wrapper = mount(ActionSummary, {
       props: {
         snapshot: baseSnapshot,
-        events: [event('action_started', {}, 'ally_001', null)],
+        events: [event('card_held', { card_id: 'card_fire_ball', reason: 'insufficient_mana' })],
+        catalog,
         lastCursor: 2,
       },
     })
 
-    expect(wrapper.text()).toContain('No card resolved in this action.')
+    expect(wrapper.text()).toContain('使用できるカードがありませんでした。')
+    expect(wrapper.text()).toContain('理由：MP不足')
   })
 })

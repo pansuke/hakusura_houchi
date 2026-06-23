@@ -5,7 +5,7 @@
 - MP不足カードは捨てず、後続の発動可能カードを使う
 - discard済みカードはdraw_pile枯渇後に決定的に再利用される
 - 手札上限5枚では追加ドローがblockedになる
-- DS / MRG / HRGは複数回しきい値到達を処理し、MP / HPは上限を超えない
+- HPR / MPRは行動者だけに適用され、DSはDraw Gaugeだけを進める
 - damage / heal / gain_mana / draw_cardの4Effectを順番に解決する
 - HPが0になったキャラクターは一度だけdefeatedになり勝敗が確定する
 - 最大Action数に到達すると引き分けになる
@@ -69,9 +69,11 @@ def participant(
     deck: list[BattleCard],
     hp: int = 30,
     mp: int = 3,
+    initial_hp: int | None = None,
+    initial_mp: int | None = None,
     ds: int = 0,
-    mrg: int = 0,
-    hrg: int = 0,
+    mpr: int = 0,
+    hpr: int = 0,
 ) -> BattleParticipantSetup:
     return BattleParticipantSetup(
         participant_id=participant_id,
@@ -79,11 +81,11 @@ def participant(
         character_master_id=f"character_{participant_id}",
         max_hp=hp,
         max_mp=mp,
-        initial_hp=hp,
-        initial_mp=mp,
+        initial_hp=initial_hp if initial_hp is not None else hp,
+        initial_mp=initial_mp if initial_mp is not None else mp,
         ds=ds,
-        mrg=mrg,
-        hrg=hrg,
+        mpr=mpr,
+        hpr=hpr,
         deck=deck,
     )
 
@@ -197,10 +199,10 @@ def test_hand_limit_blocks_draw_when_hand_is_full() -> None:
                 damage_card("card_expensive_5", 1, mp_cost=99),
                 damage_card("card_extra", 1, mp_cost=99),
             ],
-            ds=200,
+            ds=300,
         ),
         participant("enemy_001", "enemy", [damage_card("card_enemy", 0)]),
-        max_actions=2,
+        max_actions=1,
     )
 
     replay = BattleEngine().simulate(battle_scenario)
@@ -212,42 +214,127 @@ def test_hand_limit_blocks_draw_when_hand_is_full() -> None:
     assert len(replay.snapshots[-1].participants["ally_001"].hand) == 5
 
 
-def test_gauges_trigger_multiple_times_and_cap_hp_mp() -> None:
+def test_action_right_recovery_applies_only_to_actor_and_caps_hp_mp() -> None:
     battle_scenario = scenario(
         participant(
             "ally_001",
             "ally",
             [damage_card("card_expensive", 1, mp_cost=99)],
             hp=20,
-            mp=3,
+            mp=5,
+            initial_hp=18,
+            initial_mp=4,
             ds=0,
-            mrg=250,
-            hrg=250,
+            mpr=3,
+            hpr=5,
         ),
-        participant("enemy_001", "enemy", [damage_card("card_enemy", 0)]),
+        participant(
+            "enemy_001",
+            "enemy",
+            [damage_card("card_enemy", 0)],
+            hp=20,
+            mp=5,
+            initial_hp=18,
+            initial_mp=4,
+            mpr=3,
+            hpr=5,
+        ),
         max_actions=1,
     )
 
     replay = BattleEngine().simulate(battle_scenario)
 
     ally_snapshot = replay.snapshots[-1].participants["ally_001"]
-    assert ally_snapshot.mp == 3
+    enemy_snapshot = replay.snapshots[-1].participants["enemy_001"]
+    assert ally_snapshot.mp == 5
     assert ally_snapshot.hp == 20
-    assert ally_snapshot.mana_gauge == 50
-    assert ally_snapshot.health_gauge == 50
-    mana_gauge_event = next(
+    assert enemy_snapshot.mp == 4
+    assert enemy_snapshot.hp == 18
+    assert not hasattr(ally_snapshot, "mana_gauge")
+    assert not hasattr(ally_snapshot, "health_gauge")
+    mana_recovered_event = next(
         event
         for event in replay.events
-        if event.event_type == "gauge_changed"
-        and event.actor_id == "ally_001"
-        and event.payload["gauge_type"] == "mana"
+        if event.event_type == "mana_recovered" and event.actor_id == "ally_001"
     )
-    assert mana_gauge_event.payload == {
-        "gauge_type": "mana",
+    assert mana_recovered_event.payload == {
+        "before": 4,
+        "requested": 3,
+        "applied": 1,
+        "after": 5,
+        "reason": "action_right",
+    }
+    health_recovered_event = next(
+        event
+        for event in replay.events
+        if event.event_type == "health_recovered" and event.actor_id == "ally_001"
+    )
+    assert health_recovered_event.payload == {
+        "before": 18,
+        "requested": 5,
+        "applied": 2,
+        "after": 20,
+        "reason": "action_right",
+    }
+
+
+def test_mpr_is_applied_before_card_playability_check() -> None:
+    battle_scenario = scenario(
+        participant(
+            "ally_001",
+            "ally",
+            [damage_card("card_after_mpr", 4, mp_cost=2)],
+            mp=3,
+            initial_mp=1,
+            mpr=1,
+        ),
+        participant("enemy_001", "enemy", [damage_card("card_enemy", 0)], hp=10),
+        max_actions=1,
+    )
+
+    replay = BattleEngine().simulate(battle_scenario)
+
+    assert any(
+        event.event_type == "card_used"
+        and event.payload["card_id"] == "card_after_mpr"
+        for event in replay.events
+    )
+    assert replay.snapshots[-1].participants["enemy_001"].hp == 6
+
+
+def test_ds_applies_only_to_actor_draw_gauge() -> None:
+    battle_scenario = scenario(
+        participant(
+            "ally_001",
+            "ally",
+            [
+                damage_card("card_a", 1),
+                damage_card("card_b", 1),
+                damage_card("card_c", 1),
+                damage_card("card_d", 1),
+            ],
+            ds=100,
+        ),
+        participant("enemy_001", "enemy", [damage_card("card_enemy", 0)], ds=100),
+        max_actions=1,
+    )
+
+    replay = BattleEngine().simulate(battle_scenario)
+
+    ally_snapshot = replay.snapshots[-1].participants["ally_001"]
+    enemy_snapshot = replay.snapshots[-1].participants["enemy_001"]
+    assert ally_snapshot.draw_gauge == 0
+    assert ally_snapshot.hand == ["card_b", "card_c", "card_d"]
+    assert enemy_snapshot.draw_gauge == 0
+    assert enemy_snapshot.hand == ["card_enemy"]
+    gauge_events = [event for event in replay.events if event.event_type == "gauge_changed"]
+    assert [event.actor_id for event in gauge_events] == ["ally_001"]
+    assert gauge_events[0].payload == {
+        "gauge_type": "draw",
         "before": 0,
-        "gain": 250,
-        "trigger_count": 2,
-        "after": 50,
+        "gain": 100,
+        "trigger_count": 1,
+        "after": 0,
         "blocked_reason": None,
     }
 
@@ -286,6 +373,7 @@ def test_four_effect_types_are_resolved_in_order() -> None:
         for event in replay.events
         if event.event_type in {"mana_gained", "card_drawn", "health_recovered", "damage_applied"}
         and event.action_index == 1
+        and event.payload.get("reason") != "action_right"
     ]
     assert effect_events[-4:] == [
         "mana_gained",
@@ -309,6 +397,15 @@ def test_death_and_win_result_are_emitted_once() -> None:
     assert replay.summary.end_reason == "enemy_defeated"
     assert [event.event_type for event in replay.events].count("character_defeated") == 1
     assert replay.snapshots[-1].battle_status == "completed"
+    card_used_event = next(event for event in replay.events if event.event_type == "card_used")
+    assert card_used_event.target_id == "enemy_001"
+    damage_event = next(event for event in replay.events if event.event_type == "damage_applied")
+    assert damage_event.payload == {
+        "before": 10,
+        "requested": 99,
+        "applied": 10,
+        "after": 0,
+    }
     final_action_events = [
         event.event_type
         for event in replay.events
@@ -356,6 +453,12 @@ def test_event_snapshot_summary_are_consistent() -> None:
     assert replay.snapshots[0].next_actor_id == "ally_001"
     assert replay.snapshots[1].acted_actor_id == "ally_001"
     assert replay.snapshots[1].next_actor_id == "enemy_001"
+    ally_snapshot = replay.snapshots[1].participants["ally_001"]
+    assert ally_snapshot.character_master_id == "character_ally_001"
+    assert ally_snapshot.ds == 0
+    assert ally_snapshot.mpr == 0
+    assert ally_snapshot.hpr == 0
+    assert replay.display_catalog["participants"]["ally_001"]["name"] == "戦士"
 
 
 @pytest.mark.parametrize(

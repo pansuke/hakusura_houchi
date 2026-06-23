@@ -171,8 +171,7 @@ input {
 }
 
 .summary-list,
-.readable-events,
-.events ul {
+.debug-panel ul {
   display: grid;
   gap: 8px;
   margin: 0;
@@ -196,16 +195,21 @@ input {
 
 .combatant-actor {
   border-color: rgba(225, 180, 95, 0.9);
-  box-shadow: 0 0 0 2px rgba(225, 180, 95, 0.14);
+  background: rgba(225, 180, 95, 0.11);
+  box-shadow: 0 0 0 2px rgba(225, 180, 95, 0.16);
 }
 
-.combatant-next {
-  outline: 2px solid rgba(142, 230, 164, 0.68);
-  outline-offset: -5px;
+.combatant-attack-target {
+  border-color: rgba(255, 141, 124, 0.62);
 }
 
-.combatant-target {
-  background: rgba(80, 35, 30, 0.68);
+.combatant-heal-target {
+  border-color: rgba(142, 230, 164, 0.62);
+}
+
+.combatant-defeated {
+  opacity: 0.68;
+  filter: grayscale(0.7);
 }
 
 .combatant-heading {
@@ -215,25 +219,22 @@ input {
   gap: 12px;
 }
 
-.combatant-tags {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 6px;
-}
-
-.combatant-tags span {
+.target-note {
   border-radius: 999px;
   padding: 3px 7px;
-  color: #11160f;
-  background: #e1b45f;
+  color: #2a100d;
+  background: #ff8d7c;
   font-size: 0.68rem;
   font-weight: 900;
 }
 
-.combatant h2,
-.events h2 {
-  margin: 0 0 12px;
+.target-note.heal {
+  color: #0e2114;
+  background: #8ee6a4;
+}
+
+.combatant h2 {
+  margin: 0;
   color: #ffffff;
   font-size: 1.1rem;
 }
@@ -243,7 +244,6 @@ input {
   color: #e1b45f;
   font-size: 0.78rem;
   font-weight: 800;
-  text-transform: uppercase;
 }
 
 .combatant dl {
@@ -258,12 +258,34 @@ input {
   gap: 10px;
 }
 
-.events {
+.stat-section,
+.hand-section,
+.participant-debug {
+  margin-top: 16px;
+}
+
+.stat-section h3,
+.hand-section h3 {
+  margin: 0 0 8px;
+  color: #e1b45f;
+  font-size: 0.9rem;
+}
+
+.defeated-text {
+  margin: 12px 0;
+  color: #ff8d7c;
+  font-size: 1.35rem;
+  font-weight: 900;
+}
+
+.debug-panel {
   border-top: 1px solid rgba(244, 241, 232, 0.14);
   padding-top: 18px;
 }
 
-.events details {
+.debug-panel details,
+.participant-debug,
+.card-chip {
   margin-top: 12px;
   border: 1px solid rgba(244, 241, 232, 0.12);
   border-radius: 8px;
@@ -271,10 +293,35 @@ input {
   background: rgba(244, 241, 232, 0.04);
 }
 
-.events summary {
+.debug-panel summary,
+.participant-debug summary,
+.card-chip summary {
   color: #e1b45f;
   font-weight: 800;
   cursor: pointer;
+}
+
+.participant-debug p,
+.card-chip p {
+  margin: 8px 0 0;
+  color: #d8d2c3;
+}
+
+.card-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.card-chip {
+  margin-top: 0;
+  min-width: 140px;
+  padding: 8px 10px;
+}
+
+.card-chip summary span {
+  color: #f4f1e8;
+  font-size: 0.78rem;
 }
 
 .raw-events code {
@@ -285,32 +332,21 @@ input {
   white-space: pre-wrap;
 }
 
-.gauge-list {
+.draw-bar-row {
   display: grid;
-  gap: 5px;
-}
-
-.gauge-row {
-  display: grid;
-  grid-template-columns: 48px 1fr 64px;
+  grid-template-columns: minmax(80px, 1fr) 64px;
   align-items: center;
   gap: 8px;
 }
 
-.gauge-label,
-.gauge-value {
-  color: #d8d2c3;
-  font-size: 0.78rem;
-}
-
-.gauge-bar {
+.draw-bar {
   height: 8px;
   overflow: hidden;
   border-radius: 999px;
   background: rgba(244, 241, 232, 0.14);
 }
 
-.gauge-fill {
+.draw-fill {
   display: block;
   height: 100%;
   border-radius: inherit;

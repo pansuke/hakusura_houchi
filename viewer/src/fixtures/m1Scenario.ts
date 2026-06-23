@@ -10,10 +10,10 @@ export const m1Scenario: BattleScenarioRequest = {
       max_hp: 32,
       max_mp: 5,
       initial_hp: 32,
-      initial_mp: 3,
+      initial_mp: 2,
       ds: 100,
-      mrg: 50,
-      hrg: 0,
+      mpr: 1,
+      hpr: 0,
       deck: [
         {
           card_id: 'card_fire_ball',
@@ -41,8 +41,8 @@ export const m1Scenario: BattleScenarioRequest = {
       initial_hp: 28,
       initial_mp: 2,
       ds: 0,
-      mrg: 50,
-      hrg: 0,
+      mpr: 1,
+      hpr: 0,
       deck: [
         {
           card_id: 'card_claw',

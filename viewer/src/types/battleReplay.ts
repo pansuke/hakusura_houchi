@@ -10,15 +10,17 @@ export type BattleEvent = {
 
 export type ParticipantSnapshot = {
   participant_id: string
+  character_master_id: string
   side: string
   hp: number
   max_hp: number
   mp: number
   max_mp: number
   alive: boolean
+  ds: number
+  mpr: number
+  hpr: number
   draw_gauge: number
-  mana_gauge: number
-  health_gauge: number
   hand: string[]
   draw_pile: string[]
   discard_pile: string[]
@@ -41,6 +43,12 @@ export type BattleReplay = {
     end_reason: string
     action_count: number
   }
+  display_catalog: DisplayCatalog
+}
+
+export type DisplayCatalog = {
+  participants: Record<string, { name: string }>
+  cards: Record<string, { name: string; mp_cost: number; description: string }>
 }
 
 export type BattleEffectRequest = {
@@ -64,8 +72,8 @@ export type BattleParticipantRequest = {
   initial_hp: number
   initial_mp: number
   ds: number
-  mrg: number
-  hrg: number
+  mpr: number
+  hpr: number
   deck: BattleCardRequest[]
 }
 

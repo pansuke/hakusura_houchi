@@ -44,8 +44,8 @@ class BattleParticipantRequest(ApiSchema):
     initial_hp: int = Field(ge=1)
     initial_mp: int = Field(ge=0)
     ds: int = Field(ge=0)
-    mrg: int = Field(ge=0)
-    hrg: int = Field(ge=0)
+    mpr: int = Field(ge=0)
+    hpr: int = Field(ge=0)
     deck: list[BattleCardRequest]
 
 

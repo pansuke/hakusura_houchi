@@ -57,8 +57,8 @@ def valid_battle_payload() -> dict[str, object]:
                 "initial_hp": 20,
                 "initial_mp": 3,
                 "ds": 0,
-                "mrg": 0,
-                "hrg": 0,
+                "mpr": 0,
+                "hpr": 0,
                 "deck": [
                     {
                         "card_id": "card_slash",
@@ -76,8 +76,8 @@ def valid_battle_payload() -> dict[str, object]:
                 "initial_hp": 10,
                 "initial_mp": 3,
                 "ds": 0,
-                "mrg": 0,
-                "hrg": 0,
+                "mpr": 0,
+                "hpr": 0,
                 "deck": [
                     {
                         "card_id": "card_claw",

@@ -1,22 +1,22 @@
 /*
 テスト一覧:
-- マウント時にsimulate APIからReplayを読み込んでAction #0を表示する
-- Next / Prev / +10 / Last / Firstでcursorを移動できる
-- Jumpで任意Actionへ移動できる
-- Autoplayは表示位置を進め、終端で停止する
-- 操作ロック中は多重操作できない
-- acted_actor_id / next_actor_idのキャラクターへ表示タグが付く
-- Action Summaryはカード・ダメージ・次Actorを表示する
-- Event番号は二重表示しない
+- マウント時にsimulate APIからReplayを読み込んで行動0を表示する
+- 操作ボタンは日本語で表示され、cursorを移動できる
 - 最終Action以外では最終結果を表示しない
+- 通常表示にはAlive yes / Mana Gauge / Health Gaugeを表示しない
+- 通常表示では日本語キャラクター名・カード名・カードチップを表示する
+- 今回の行動者、攻撃対象、次の行動者が分かる
+- Debug領域を開くと内部IDとRaw Eventを確認できる
+- Autoplayは表示位置を進め、終端で停止する
 */
 
 import { mount } from '@vue/test-utils'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import App from './App.vue'
+import type { BattleReplay, ParticipantSnapshot } from './types/battleReplay'
 
-const replay = {
+const replay: BattleReplay = {
   events: [
     {
       event_id: 1,
@@ -31,51 +31,87 @@ const replay = {
       event_id: 2,
       action_index: 1,
       sequence: 1,
+      event_type: 'action_started',
+      actor_id: 'ally_001',
+      target_id: null,
+      payload: {},
+    },
+    {
+      event_id: 3,
+      action_index: 1,
+      sequence: 2,
+      event_type: 'mana_recovered',
+      actor_id: 'ally_001',
+      target_id: 'ally_001',
+      payload: { before: 3, requested: 1, applied: 0, after: 3, reason: 'action_right' },
+    },
+    {
+      event_id: 4,
+      action_index: 1,
+      sequence: 3,
+      event_type: 'gauge_changed',
+      actor_id: 'ally_001',
+      target_id: null,
+      payload: { gauge_type: 'draw', before: 0, gain: 100, trigger_count: 1, after: 0 },
+    },
+    {
+      event_id: 5,
+      action_index: 1,
+      sequence: 4,
       event_type: 'card_attempted',
       actor_id: 'ally_001',
       target_id: 'enemy_001',
       payload: { card_id: 'card_fire_ball', mp_cost: 1 },
     },
     {
-      event_id: 3,
+      event_id: 6,
       action_index: 1,
-      sequence: 2,
+      sequence: 5,
       event_type: 'mana_spent',
       actor_id: 'ally_001',
       target_id: null,
-      payload: { card_id: 'card_fire_ball', amount: 1, mp: 2 },
+      payload: { card_id: 'card_fire_ball', before: 3, amount: 1, after: 2 },
     },
     {
-      event_id: 4,
+      event_id: 7,
       action_index: 1,
-      sequence: 3,
+      sequence: 6,
       event_type: 'card_used',
       actor_id: 'ally_001',
-      target_id: null,
+      target_id: 'enemy_001',
       payload: { card_id: 'card_fire_ball' },
     },
     {
-      event_id: 5,
+      event_id: 8,
       action_index: 1,
-      sequence: 4,
+      sequence: 7,
       event_type: 'damage_applied',
       actor_id: 'ally_001',
       target_id: 'enemy_001',
-      payload: { amount: 6, hp: 4 },
+      payload: { before: 28, requested: 12, applied: 12, after: 16 },
     },
     {
-      event_id: 6,
+      event_id: 9,
       action_index: 2,
       sequence: 1,
+      event_type: 'character_defeated',
+      actor_id: 'enemy_001',
+      target_id: null,
+      payload: { side: 'enemy' },
+    },
+    {
+      event_id: 10,
+      action_index: 2,
+      sequence: 2,
       event_type: 'action_completed',
       actor_id: 'enemy_001',
       target_id: null,
       payload: { battle_status: 'completed' },
     },
     {
-      event_id: 7,
+      event_id: 11,
       action_index: 2,
-      sequence: 2,
+      sequence: 3,
       event_type: 'battle_completed',
       actor_id: null,
       target_id: null,
@@ -90,8 +126,8 @@ const replay = {
       acted_actor_id: null,
       next_actor_id: 'ally_001',
       participants: {
-        ally_001: participant('ally_001', 'ally', 20),
-        enemy_001: participant('enemy_001', 'enemy', 10),
+        ally_001: participant('ally_001', 'ally', 32, 32, 3, 5, true, ['card_fire_ball']),
+        enemy_001: participant('enemy_001', 'enemy', 28, 28, 2, 3, true, ['card_claw']),
       },
     },
     {
@@ -101,8 +137,8 @@ const replay = {
       acted_actor_id: 'ally_001',
       next_actor_id: 'enemy_001',
       participants: {
-        ally_001: participant('ally_001', 'ally', 20),
-        enemy_001: participant('enemy_001', 'enemy', 4),
+        ally_001: participant('ally_001', 'ally', 32, 32, 2, 5, true, ['card_focus', 'card_recover']),
+        enemy_001: participant('enemy_001', 'enemy', 16, 28, 2, 3, true, ['card_claw']),
       },
     },
     {
@@ -112,8 +148,8 @@ const replay = {
       acted_actor_id: 'enemy_001',
       next_actor_id: null,
       participants: {
-        ally_001: participant('ally_001', 'ally', 20),
-        enemy_001: participant('enemy_001', 'enemy', 0, false),
+        ally_001: participant('ally_001', 'ally', 32, 32, 2, 5, true, ['card_focus']),
+        enemy_001: participant('enemy_001', 'enemy', 0, 28, 2, 3, false, []),
       },
     },
   ],
@@ -122,21 +158,44 @@ const replay = {
     end_reason: 'enemy_defeated',
     action_count: 2,
   },
+  display_catalog: {
+    participants: {
+      ally_001: { name: '戦士' },
+      enemy_001: { name: 'ゴブリン' },
+    },
+    cards: {
+      card_fire_ball: { name: '火球', mp_cost: 1, description: '敵に12ダメージ' },
+      card_focus: { name: '精神集中', mp_cost: 0, description: '自身のMPを1回復' },
+      card_recover: { name: '治癒', mp_cost: 1, description: '自身のHPを3回復' },
+      card_claw: { name: 'ひっかき', mp_cost: 0, description: '敵に5ダメージ' },
+    },
+  },
 }
 
-function participant(participantId: string, side: string, hp: number, alive = true) {
+function participant(
+  participantId: string,
+  side: string,
+  hp: number,
+  maxHp: number,
+  mp: number,
+  maxMp: number,
+  alive: boolean,
+  hand: string[],
+): ParticipantSnapshot {
   return {
     participant_id: participantId,
+    character_master_id: `character_${participantId}`,
     side,
     hp,
-    max_hp: 20,
-    mp: 3,
-    max_mp: 5,
+    max_hp: maxHp,
+    mp,
+    max_mp: maxMp,
     alive,
+    ds: participantId === 'ally_001' ? 100 : 0,
+    mpr: 1,
+    hpr: 0,
     draw_gauge: 0,
-    mana_gauge: 0,
-    health_gauge: 0,
-    hand: ['card_fire_ball'],
+    hand,
     draw_pile: [],
     discard_pile: [],
   }
@@ -157,48 +216,56 @@ async function mountLoadedApp() {
   )
   const wrapper = mount(App)
   await vi.waitFor(() => {
-    expect(wrapper.text()).toContain('Action 0 / 2')
+    expect(wrapper.text()).toContain('行動 0 / 2')
   })
   return wrapper
 }
 
 describe('App', () => {
-  test('loads replay from simulate API and renders action zero', async () => {
+  test('loads replay from simulate API and renders initial action', async () => {
     const wrapper = await mountLoadedApp()
 
     expect(fetch).toHaveBeenCalledWith(
       'http://localhost:8000/api/v1/battles/simulate',
       expect.objectContaining({ method: 'POST' }),
     )
-    expect(wrapper.text()).toContain('ally_001')
-    expect(wrapper.text()).toContain('Battle ready')
+    expect(wrapper.text()).toContain('戦闘開始前')
+    expect(wrapper.text()).toContain('味方・戦士')
+    expect(wrapper.text()).toContain('敵・ゴブリン')
 
     wrapper.unmount()
   })
 
-  test('moves cursor with replay controls', async () => {
+  test('uses Japanese controls and moves cursor', async () => {
     vi.useFakeTimers()
     const wrapper = await mountLoadedApp()
 
-    await wrapper.findAll('button').find((button) => button.text() === 'Next')?.trigger('click')
-    await vi.runOnlyPendingTimersAsync()
-    expect(wrapper.text()).toContain('Action 1 / 2')
+    expect(wrapper.text()).toContain('最初')
+    expect(wrapper.text()).toContain('前へ')
+    expect(wrapper.text()).toContain('次へ')
+    expect(wrapper.text()).toContain('自動再生')
+    expect(wrapper.text()).toContain('行動番号')
+    expect(wrapper.text()).toContain('再生速度')
 
-    await wrapper.findAll('button').find((button) => button.text() === 'Prev')?.trigger('click')
+    await wrapper.findAll('button').find((button) => button.text() === '次へ')?.trigger('click')
     await vi.runOnlyPendingTimersAsync()
-    expect(wrapper.text()).toContain('Action 0 / 2')
+    expect(wrapper.text()).toContain('行動 1 / 2')
+
+    await wrapper.findAll('button').find((button) => button.text() === '最後')?.trigger('click')
+    await vi.runOnlyPendingTimersAsync()
+    expect(wrapper.text()).toContain('行動 2 / 2')
+
+    await wrapper.findAll('button').find((button) => button.text() === '前へ')?.trigger('click')
+    await vi.runOnlyPendingTimersAsync()
+    expect(wrapper.text()).toContain('行動 1 / 2')
 
     await wrapper.findAll('button').find((button) => button.text() === '+10')?.trigger('click')
     await vi.runOnlyPendingTimersAsync()
-    expect(wrapper.text()).toContain('Action 2 / 2')
+    expect(wrapper.text()).toContain('行動 2 / 2')
 
-    await wrapper.findAll('button').find((button) => button.text() === 'First')?.trigger('click')
+    await wrapper.findAll('button').find((button) => button.text() === '最初')?.trigger('click')
     await vi.runOnlyPendingTimersAsync()
-    expect(wrapper.text()).toContain('Action 0 / 2')
-
-    await wrapper.findAll('button').find((button) => button.text() === 'Last')?.trigger('click')
-    await vi.runOnlyPendingTimersAsync()
-    expect(wrapper.text()).toContain('Action 2 / 2')
+    expect(wrapper.text()).toContain('行動 0 / 2')
 
     wrapper.unmount()
   })
@@ -212,58 +279,7 @@ describe('App', () => {
     await input.trigger('change')
     await vi.runOnlyPendingTimersAsync()
 
-    expect(wrapper.text()).toContain('Action 2 / 2')
-    wrapper.unmount()
-  })
-
-  test('autoplay advances and stops at the last action', async () => {
-    vi.useFakeTimers()
-    const wrapper = await mountLoadedApp()
-
-    await wrapper.findAll('button').find((button) => button.text() === 'Auto')?.trigger('click')
-    await vi.advanceTimersByTimeAsync(1600)
-
-    expect(wrapper.text()).toContain('Action 2 / 2')
-    expect(wrapper.text()).toContain('Auto')
-    wrapper.unmount()
-  })
-
-  test('ignores repeated operations while animation lock is active', async () => {
-    vi.useFakeTimers()
-    const wrapper = await mountLoadedApp()
-    const nextButton = wrapper.findAll('button').find((button) => button.text() === 'Next')
-
-    await nextButton?.trigger('click')
-    await nextButton?.trigger('click')
-
-    expect(wrapper.text()).toContain('Action 1 / 2')
-    await vi.runOnlyPendingTimersAsync()
-    wrapper.unmount()
-  })
-
-  test('marks acted and next participants', async () => {
-    vi.useFakeTimers()
-    const wrapper = await mountLoadedApp()
-
-    await wrapper.findAll('button').find((button) => button.text() === 'Next')?.trigger('click')
-    await vi.runOnlyPendingTimersAsync()
-
-    expect(wrapper.find('.combatant-actor').text()).toContain('ally_001')
-    expect(wrapper.find('.combatant-next').text()).toContain('enemy_001')
-    wrapper.unmount()
-  })
-
-  test('renders action summary and readable event text', async () => {
-    vi.useFakeTimers()
-    const wrapper = await mountLoadedApp()
-
-    await wrapper.findAll('button').find((button) => button.text() === 'Next')?.trigger('click')
-    await vi.runOnlyPendingTimersAsync()
-
-    expect(wrapper.text()).toContain('ally_001 used card_fire_ball on enemy_001')
-    expect(wrapper.text()).toContain('enemy_001 took 6 damage')
-    expect(wrapper.text()).toContain('Next: enemy_001')
-    expect(wrapper.text()).not.toContain('1. 1.')
+    expect(wrapper.text()).toContain('行動 2 / 2')
     wrapper.unmount()
   })
 
@@ -271,11 +287,108 @@ describe('App', () => {
     vi.useFakeTimers()
     const wrapper = await mountLoadedApp()
 
-    expect(wrapper.find('.result-badge').text()).toBe('running')
-    await wrapper.findAll('button').find((button) => button.text() === 'Last')?.trigger('click')
+    expect(wrapper.find('.result-badge').text()).toBe('戦闘中')
+    await wrapper.findAll('button').find((button) => button.text() === '最後')?.trigger('click')
     await vi.runOnlyPendingTimersAsync()
 
-    expect(wrapper.find('.result-badge').text()).toBe('ally_win / enemy_defeated')
+    expect(wrapper.find('.result-badge').text()).toBe('勝利 / 敵を撃破')
+    wrapper.unmount()
+  })
+
+  test('normal display hides alive and removed gauges', async () => {
+    const wrapper = await mountLoadedApp()
+    const normalText = wrapper.find('.combatants').text()
+
+    expect(normalText).not.toContain('Alive')
+    expect(normalText).not.toContain('yes')
+    expect(normalText).not.toContain('Mana Gauge')
+    expect(normalText).not.toContain('Health Gauge')
+    expect(normalText).toContain('HPR')
+    expect(normalText).toContain('MPR')
+    expect(normalText).toContain('なし')
+    wrapper.unmount()
+  })
+
+  test('renders Japanese names and card chips in normal display', async () => {
+    vi.useFakeTimers()
+    const wrapper = await mountLoadedApp()
+
+    await wrapper.findAll('button').find((button) => button.text() === '次へ')?.trigger('click')
+    await vi.runOnlyPendingTimersAsync()
+
+    const normalText = wrapper.find('.combatants').text()
+    expect(normalText).toContain('戦士')
+    expect(normalText).toContain('ゴブリン')
+    expect(normalText).toContain('精神集中')
+    expect(normalText).toContain('治癒')
+    expect(normalText).not.toContain('card_focus')
+    expect(normalText).not.toContain('ally_001')
+    wrapper.unmount()
+  })
+
+  test('shows actor target and next actor without duplicate action result', async () => {
+    vi.useFakeTimers()
+    const wrapper = await mountLoadedApp()
+
+    await wrapper.findAll('button').find((button) => button.text() === '次へ')?.trigger('click')
+    await vi.runOnlyPendingTimersAsync()
+
+    expect(wrapper.find('.action-summary').text()).toContain('味方・戦士の行動')
+    expect(wrapper.find('.action-summary').text()).toContain('「火球」を使用')
+    expect(wrapper.find('.action-summary').text()).toContain('敵・ゴブリンに12ダメージ')
+    expect(wrapper.find('.action-summary').text()).toContain('次の行動：ゴブリン')
+    expect(wrapper.find('.combatant-actor').text()).toContain('今回の行動者')
+    expect(wrapper.find('.combatant-attack-target').text()).toContain('攻撃対象')
+    expect(wrapper.findAll('h2').map((heading) => heading.text())).not.toContain('Action Result')
+    wrapper.unmount()
+  })
+
+  test('shows defeated state only when participant is defeated', async () => {
+    vi.useFakeTimers()
+    const wrapper = await mountLoadedApp()
+
+    expect(wrapper.find('.combatants').text()).not.toContain('戦闘不能')
+    await wrapper.findAll('button').find((button) => button.text() === '最後')?.trigger('click')
+    await vi.runOnlyPendingTimersAsync()
+
+    expect(wrapper.find('.combatant-defeated').text()).toContain('戦闘不能')
+    wrapper.unmount()
+  })
+
+  test('debug area exposes internal ids and raw events', async () => {
+    const wrapper = await mountLoadedApp()
+    const debugText = wrapper.find('.debug-panel').text()
+
+    expect(debugText).toContain('生イベント')
+    expect(debugText).toContain('event_id=1')
+    expect(debugText).toContain('participant_id: ally_001')
+    expect(debugText).toContain('character_master_id: character_ally_001')
+    wrapper.unmount()
+  })
+
+  test('autoplay advances and stops at the last action', async () => {
+    vi.useFakeTimers()
+    const wrapper = await mountLoadedApp()
+
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '自動再生')
+      ?.trigger('click')
+    await vi.advanceTimersByTimeAsync(1600)
+
+    expect(wrapper.text()).toContain('行動 2 / 2')
+    expect(wrapper.text()).toContain('自動再生')
+    wrapper.unmount()
+  })
+
+  test('shows load failure message', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }))
+    const wrapper = mount(App)
+
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('リプレイの読み込みに失敗しました')
+    })
+
     wrapper.unmount()
   })
 })

@@ -50,8 +50,8 @@ def to_scenario(request: BattleSimulateRequest) -> BattleScenario:
                 initial_hp=participant.initial_hp,
                 initial_mp=participant.initial_mp,
                 ds=participant.ds,
-                mrg=participant.mrg,
-                hrg=participant.hrg,
+                mpr=participant.mpr,
+                hpr=participant.hpr,
                 deck=[
                     BattleCard(
                         card_id=card.card_id,

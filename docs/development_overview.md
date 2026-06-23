@@ -2,7 +2,7 @@
 
 ## 目的
 
-このリポジトリの最初の完了条件は、ゲーム実装ではなく M0-A 開発環境基盤の成立です。
+このリポジトリの最初の完了条件は、ゲーム実装ではなく M0-A 開発環境基盤の成立でした。
 
 - Docker で開発環境が起動する
 - Backend と Viewer の疎通を確認できる
@@ -29,7 +29,22 @@
 - ID 重複チェック
 - 参照整合性チェック
 
-現在は M0-A 完了候補、M0-B 実装開始済みとして扱う。
+現在は M0-A / M0-B 完了候補、M1 / M2 実装済みとして扱う。
+
+### M1: 1対1BattleEngine
+
+- 固定`turn_order`による味方1体・敵1体の戦闘
+- 行動権獲得時のHPR / MPR / DS処理
+- DSによるDraw Gauge進行とドロー判定
+- `damage` / `heal` / `gain_mana` / `draw_card`のEffect解決
+- Event / Snapshot / Summary / Display CatalogのReplay生成
+
+### M2: Replay API・開発Viewer
+
+- `POST /api/v1/battles/simulate`
+- 計算済みReplayのAction cursor表示
+- Action Pipelineによるフェーズ表示
+- 日本語名を優先した表示とDebug raw eventの分離
 
 ## 採用方針
 
@@ -38,8 +53,11 @@
 - Viewer は `package-lock.json` と `npm ci` で依存を固定する
 - 初期段階では Postgres を導入しない
 - 戦闘ロジックは Viewer に入れない
+- Viewer はBattleEngineが生成したReplayを表示するだけにする
 - Masterデータは `data/source` の個別 JSON から `data/generated/game-data.json` へ統合する
 - M0-Bでは CharacterMaster / TraitMaster / CardMaster のみ対象にする
+- HPR / MPR はGaugeではなく、行動権獲得時の確定回復とする
+- DSのみDraw Gaugeへ加算し、相手Action中の非行動者には適用しない
 
 ## 初期ドメイン境界
 
@@ -50,8 +68,9 @@
 
 ## 未実装
 
-- 1レーン戦闘
-- リプレイ出力
+- 3レーン戦闘
+- SUPPORT
+- 進軍 / ネクサス
 - Postgres 永続化
 - Playwright E2E
 

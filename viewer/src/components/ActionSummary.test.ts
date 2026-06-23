@@ -95,7 +95,8 @@ describe('ActionSummary', () => {
     })
 
     expect(wrapper.text()).toContain('戦闘開始前')
-    expect(wrapper.text()).toContain('最初の行動前の状態です。')
+    expect(wrapper.text()).toContain('① 行動準備')
+    expect(wrapper.text()).toContain('カード判定前です')
   })
 
   test('summarizes card action in Japanese', () => {
@@ -103,8 +104,11 @@ describe('ActionSummary', () => {
       props: {
         snapshot: baseSnapshot,
         events: [
-          event('mana_spent', { before: 3, amount: 1, after: 2 }, 'ally_001', null),
+          event('mana_recovered', { before: 2, requested: 1, applied: 1, after: 3, reason: 'action_right' }, 'ally_001', 'ally_001'),
+          event('gauge_changed', { before: 80, gain: 20, trigger_count: 1, after: 0 }, 'ally_001', null),
+          event('card_drawn', { card_id: 'card_fire_ball', reason: 'draw_gauge', hand_size_before: 3, hand_size_after: 4 }, 'ally_001', null),
           event('card_used', { card_id: 'card_fire_ball' }, 'ally_001', 'enemy_001'),
+          event('mana_spent', { before: 3, amount: 1, after: 2 }, 'ally_001', null),
           event('damage_applied', { before: 28, requested: 12, applied: 12, after: 16 }),
         ],
         catalog,
@@ -113,10 +117,18 @@ describe('ActionSummary', () => {
     })
 
     expect(wrapper.text()).toContain('味方・戦士の行動')
-    expect(wrapper.text()).toContain('「火球」を使用')
-    expect(wrapper.text()).toContain('MP 3 → 2')
+    expect(wrapper.text()).toContain('① 行動準備')
+    expect(wrapper.text()).toContain('② ドロー')
+    expect(wrapper.text()).toContain('③ カードアクション')
+    expect(wrapper.text()).toContain('④ 効果解決')
+    expect(wrapper.text()).toContain('⑤ 行動終了')
+    expect(wrapper.text()).toContain('MP回復：2 → 3（MPR +1）')
+    expect(wrapper.text()).toContain('ドロー権を1回獲得')
+    expect(wrapper.text()).toContain('「火球」を引いた')
+    expect(wrapper.text()).toContain('「火球」を選択')
+    expect(wrapper.text()).toContain('MP：3 → 2')
     expect(wrapper.text()).toContain('敵・ゴブリンに12ダメージ')
-    expect(wrapper.text()).toContain('HP 28 → 16')
+    expect(wrapper.text()).toContain('HP：28 → 16')
     expect(wrapper.text()).toContain('次の行動：ゴブリン')
   })
 
@@ -124,13 +136,21 @@ describe('ActionSummary', () => {
     const wrapper = mount(ActionSummary, {
       props: {
         snapshot: baseSnapshot,
-        events: [event('card_held', { card_id: 'card_fire_ball', reason: 'insufficient_mana' })],
+        events: [
+          event('card_held', {
+            card_id: 'card_fire_ball',
+            reason: 'insufficient_mana',
+            required_mp: 3,
+            current_mp: 2,
+          }),
+        ],
         catalog,
         lastCursor: 2,
       },
     })
 
-    expect(wrapper.text()).toContain('使用できるカードがありませんでした。')
-    expect(wrapper.text()).toContain('理由：MP不足')
+    expect(wrapper.text()).toContain('使用できるカードがありませんでした')
+    expect(wrapper.text()).toContain('火球：使用不可：MP不足')
+    expect(wrapper.text()).toContain('必要MP：3 / 現在MP：2')
   })
 })

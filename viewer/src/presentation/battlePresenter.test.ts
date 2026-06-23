@@ -1,15 +1,19 @@
 /*
 テスト一覧:
-- resultLabel / visibleResultLabelは日本語の戦闘状態を返す
-- primaryTargetは撃破、ダメージ、回復、MP獲得、card_usedの優先順で対象を返す
-- actionSummaryLinesは回復・MP獲得・カードなし理由を表示する
-- Catalog未定義IDはIDをfallback表示する
+- 5フェーズが固定順で生成される
+- HPR・MPR・DSが行動準備へ分類される
+- Draw Gaugeによるcard_drawnがドローへ分類される
+- Card Effectによるcard_drawnが効果解決へ分類される
+- card_heldのMP不足が日本語表示される
+- 手札0枚と全カード使用不能を区別する
+- Damageのbefore / afterが表示される
+- Battle終了時に次の行動者を表示しない
 */
 
 import { describe, expect, test } from 'vitest'
 
 import {
-  actionSummaryLines,
+  buildActionPhases,
   cardDescription,
   cardMpCost,
   cardName,
@@ -36,14 +40,14 @@ const snapshot: BattleSnapshot = {
   battle_status: 'running',
   battle_result: 'undecided',
   acted_actor_id: 'ally_001',
-  next_actor_id: null,
+  next_actor_id: 'enemy_001',
   participants: {
-    ally_001: participant('ally_001', 'ally'),
+    ally_001: participant('ally_001', 'ally', ['card_heal']),
     enemy_001: participant('enemy_001', 'enemy'),
   },
 }
 
-function participant(participantId: string, side: string) {
+function participant(participantId: string, side: string, hand: string[] = []) {
   return {
     participant_id: participantId,
     character_master_id: `character_${participantId}`,
@@ -57,7 +61,7 @@ function participant(participantId: string, side: string) {
     mpr: 0,
     hpr: 0,
     draw_gauge: 0,
-    hand: [],
+    hand,
     draw_pile: [],
     discard_pile: [],
   }
@@ -129,39 +133,83 @@ describe('battlePresenter', () => {
     expect(primaryTarget([event('mana_recovered', {}, 'ally_001', 'ally_001')])).toBeNull()
   })
 
-  test('summarizes heal and mana gain actions', () => {
-    const lines = actionSummaryLines(
-        snapshot,
-        [
-          event('health_recovered', { before: 10, requested: 3, applied: 3, after: 13, reason: 'action_right' }, 'ally_001', 'ally_001'),
-          event('mana_recovered', { before: 1, requested: 1, applied: 1, after: 2, reason: 'action_right' }, 'ally_001', 'ally_001'),
-          event('gauge_changed', { before: 80, gain: 20, trigger_count: 1, after: 0 }, 'ally_001', null),
-          event('card_drawn', { card_id: 'card_focus', reason: 'draw_gauge' }, 'ally_001', null),
-          event('card_used', { card_id: 'card_heal' }, 'ally_001', 'ally_001'),
-          event('health_recovered', { before: 10, requested: 3, applied: 3, after: 13, reason: 'card_effect' }, 'ally_001', 'ally_001'),
-          event('mana_gained', { before: 1, requested: 1, applied: 1, after: 2 }, 'ally_001', null),
+  test('builds fixed ordered phases for a normal action', () => {
+    const phases = buildActionPhases(
+      snapshot,
+      [
+        event('health_recovered', { before: 10, requested: 3, applied: 3, after: 13, reason: 'action_right' }, 'ally_001', 'ally_001'),
+        event('mana_recovered', { before: 1, requested: 1, applied: 1, after: 2, reason: 'action_right' }, 'ally_001', 'ally_001'),
+        event('gauge_changed', { before: 80, gain: 20, trigger_count: 1, after: 0 }, 'ally_001', null),
+        event('card_drawn', { card_id: 'card_focus', reason: 'draw_gauge', hand_size_before: 3, hand_size_after: 4 }, 'ally_001', null),
+        event('card_used', { card_id: 'card_heal' }, 'ally_001', 'ally_001'),
+        event('mana_spent', { before: 2, amount: 1, after: 1 }, 'ally_001', null),
+        event('health_recovered', { before: 10, requested: 3, applied: 3, after: 13, reason: 'card_effect' }, 'ally_001', 'ally_001'),
+        event('mana_gained', { before: 1, requested: 1, applied: 1, after: 2 }, 'ally_001', null),
+        event('card_drawn', { card_id: 'card_focus', reason: 'card_effect' }, 'ally_001', null),
       ],
       catalog,
     )
 
-    expect(lines).toContain('「治癒」を使用')
-    expect(lines).toContain('HP 10 → 13（行動時回復）')
-    expect(lines).toContain('MP 1 → 2（行動時回復）')
-    expect(lines).toContain('ドロー進捗 80 + 20 → 0（1回ドロー）')
-    expect(lines).toContain('「精神集中」を引いた')
-    expect(lines).toContain('戦士のHP 10 → 13')
-    expect(lines).toContain('戦士のMP 1 → 2')
-    expect(lines).toContain('次の行動：-')
+    expect(phases.map((phase) => phase.id)).toEqual([
+      'standby',
+      'draw',
+      'card_action',
+      'effect_result',
+      'action_end',
+    ])
+    expect(phases[0].items.map((item) => item.label)).toEqual([
+      'HP回復：10 → 13（HPR +3）',
+      'MP回復：1 → 2（MPR +1）',
+      'ドロー進捗：80 + 20 → 0',
+      'ドロー権を1回獲得',
+    ])
+    expect(phases[1].items.map((item) => item.label)).toContain('「精神集中」を引いた')
+    expect(phases[1].items.map((item) => item.label)).toContain('手札：3枚 → 4枚')
+    expect(phases[2].items.map((item) => item.label)).toContain('「治癒」を選択')
+    expect(phases[3].items.map((item) => item.label)).toContain('カード効果で「精神集中」を引いた')
+    expect(phases[4].items.map((item) => item.label)).toContain('次の行動：ゴブリン')
   })
 
-  test('summarizes no target reason', () => {
-    const lines = actionSummaryLines(
+  test('separates no draw, no hand, and unusable hand states', () => {
+    const noDraw = buildActionPhases(
       snapshot,
-      [event('card_held', { card_id: 'card_heal', reason: 'no_valid_target' })],
+      [event('gauge_changed', { before: 20, gain: 20, trigger_count: 0, after: 40 })],
+      catalog,
+    )
+    expect(noDraw[1].status).toBe('skipped')
+    expect(noDraw[1].items.map((item) => item.label)).toContain('ドロー権は発生しませんでした')
+
+    const emptyHand = buildActionPhases({ ...snapshot, participants: { ally_001: participant('ally_001', 'ally') } }, [], catalog)
+    expect(emptyHand[2].items.map((item) => item.label)).toContain('手札にカードがありませんでした')
+
+    const unusable = buildActionPhases(
+      snapshot,
+      [event('card_held', { card_id: 'card_heal', reason: 'insufficient_mana', required_mp: 3, current_mp: 2 })],
+      catalog,
+    )
+    expect(unusable[2].status).toBe('warning')
+    expect(unusable[2].items.map((item) => item.label)).toContain('治癒：使用不可：MP不足')
+    expect(unusable[2].items.map((item) => item.detail)).toContain('必要MP：3 / 現在MP：2')
+  })
+
+  test('renders damage and battle completion without next actor', () => {
+    const phases = buildActionPhases(
+      snapshot,
+      [
+        event('damage_applied', { before: 4, requested: 20, applied: 4, after: 0 }),
+        event('character_defeated', {}, 'enemy_001', null),
+        event('battle_completed', { result: 'ally_win', end_reason: 'enemy_defeated' }, null, null),
+      ],
       catalog,
     )
 
-    expect(lines).toContain('使用できるカードがありませんでした。')
-    expect(lines).toContain('理由：有効な対象なし')
+    expect(phases[3].items.map((item) => item.label)).toContain(
+      '敵・ゴブリンに20ダメージを試行 / 実ダメージ：4',
+    )
+    expect(phases[3].items.map((item) => item.label)).toContain('ゴブリンは戦闘不能になりました')
+    expect(phases[4].items.map((item) => item.label)).toEqual([
+      '敵チームが全滅しました',
+      '結果：味方チームの勝利',
+    ])
   })
 })

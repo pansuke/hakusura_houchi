@@ -294,7 +294,13 @@ class BattleEngine:
             action_index,
             "action_completed",
             actor_id=actor_id,
-            payload={"battle_status": runtime.battle_status},
+            payload={
+                "acted_actor_id": actor_id,
+                "next_actor_id": None
+                if runtime.battle_status == "completed"
+                else self._peek_next_actor_id(runtime),
+                "battle_status": runtime.battle_status,
+            },
         )
         if completion is not None:
             self._record_battle_completed(runtime, recorder)
@@ -355,21 +361,32 @@ class BattleEngine:
     ) -> None:
         for card in list(actor.hand):
             target = self._target_for_card(runtime, actor, card)
+            playable = target is not None and actor.mp >= card.mp_cost
             recorder.record(
                 runtime.action_index,
                 "card_attempted",
                 actor_id=actor.setup.participant_id,
                 target_id=target.setup.participant_id if target else None,
-                payload={"card_id": card.card_id, "mp_cost": card.mp_cost},
+                payload={
+                    "card_id": card.card_id,
+                    "required_mp": card.mp_cost,
+                    "current_mp": actor.mp,
+                    "playable": playable,
+                },
             )
-            if target is None or actor.mp < card.mp_cost:
+            if not playable:
                 reason = "no_valid_target" if target is None else "insufficient_mana"
                 recorder.record(
                     runtime.action_index,
                     "card_held",
                     actor_id=actor.setup.participant_id,
                     target_id=target.setup.participant_id if target else None,
-                    payload={"card_id": card.card_id, "reason": reason},
+                    payload={
+                        "card_id": card.card_id,
+                        "reason": reason,
+                        "required_mp": card.mp_cost,
+                        "current_mp": actor.mp,
+                    },
                 )
                 continue
             self._use_card(runtime, recorder, actor, card)
@@ -471,7 +488,11 @@ class BattleEngine:
                 runtime.action_index,
                 "card_draw_blocked",
                 actor_id=participant.setup.participant_id,
-                payload={"reason": "hand_full"},
+                payload={
+                    "reason": "hand_full",
+                    "hand_size": len(participant.hand),
+                    "hand_limit": HAND_LIMIT,
+                },
             )
             return
         if not participant.draw_pile and participant.discard_pile:
@@ -482,16 +503,22 @@ class BattleEngine:
                 runtime.action_index,
                 "card_draw_blocked",
                 actor_id=participant.setup.participant_id,
-                payload={"reason": "empty_deck"},
+                payload={"reason": "empty_deck", "hand_size": len(participant.hand)},
             )
             return
+        hand_size_before = len(participant.hand)
         card = participant.draw_pile.pop(0)
         participant.hand.append(card)
         recorder.record(
             runtime.action_index,
             "card_drawn",
             actor_id=participant.setup.participant_id,
-            payload={"card_id": card.card_id, "reason": reason},
+            payload={
+                "card_id": card.card_id,
+                "reason": reason,
+                "hand_size_before": hand_size_before,
+                "hand_size_after": len(participant.hand),
+            },
         )
 
     def _gain_mana(
@@ -674,6 +701,14 @@ class BattleEngine:
             if runtime.participants[participant_id].alive:
                 runtime.current_turn_index = turn_index
                 return
+
+    def _peek_next_actor_id(self, runtime: BattleRuntime) -> str | None:
+        for offset in range(1, len(runtime.scenario.turn_order) + 1):
+            turn_index = (runtime.current_turn_index + offset) % len(runtime.scenario.turn_order)
+            participant_id = runtime.scenario.turn_order[turn_index]
+            if runtime.participants[participant_id].alive:
+                return participant_id
+        return None
 
     def _snapshot(self, runtime: BattleRuntime, acted_actor_id: str | None) -> BattleSnapshot:
         next_actor_id = (

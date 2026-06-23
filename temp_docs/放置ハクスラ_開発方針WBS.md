@@ -95,7 +95,7 @@ Status: Ready
 - BattleScenario
 - 固定turn_order
 - Deck Runtime
-- DS / MRG / HRG
+- DS / MPR / HPR
 - 4種類のEffect
 - 死亡
 - 勝敗
@@ -434,14 +434,15 @@ Ready
 ### D-3-6. discard
 ### D-3-7. deterministic recycle
 
-## D-4. Gauge
+## D-4. Action Right Resources
 
-### D-4-1. draw
-### D-4-2. mana
-### D-4-3. health
-### D-4-4. multiple triggers
-### D-4-5. cap
-### D-4-6. blocked draw
+### D-4-1. HPR applies only to current actor
+### D-4-2. MPR applies only to current actor
+### D-4-3. DS advances only current actor Draw Gauge
+### D-4-4. draw threshold 100
+### D-4-5. multiple draw triggers
+### D-4-6. HP / MP cap
+### D-4-7. blocked draw
 
 ## D-5. Effect
 
@@ -584,10 +585,12 @@ Ready
 ## E-4. Display
 
 ### E-4-1. HP / MP
-### E-4-2. Gauge
+### E-4-2. Draw Gauge
 ### E-4-3. hand / draw / discard
-### E-4-4. Event text
-### E-4-5. result
+### E-4-4. Action Pipeline phase summary
+### E-4-5. Japanese display names
+### E-4-6. Debug raw event
+### E-4-7. result
 
 ---
 

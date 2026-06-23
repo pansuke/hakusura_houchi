@@ -52,46 +52,60 @@ const replay: BattleReplay = {
       event_type: 'gauge_changed',
       actor_id: 'ally_001',
       target_id: null,
-      payload: { gauge_type: 'draw', before: 0, gain: 100, trigger_count: 1, after: 0 },
+      payload: { gauge_type: 'draw', before: 80, gain: 20, trigger_count: 1, after: 0 },
     },
     {
       event_id: 5,
       action_index: 1,
       sequence: 4,
-      event_type: 'card_attempted',
+      event_type: 'card_drawn',
       actor_id: 'ally_001',
-      target_id: 'enemy_001',
-      payload: { card_id: 'card_fire_ball', mp_cost: 1 },
+      target_id: null,
+      payload: {
+        card_id: 'card_fire_ball',
+        reason: 'draw_gauge',
+        hand_size_before: 3,
+        hand_size_after: 4,
+      },
     },
     {
       event_id: 6,
       action_index: 1,
       sequence: 5,
+      event_type: 'card_attempted',
+      actor_id: 'ally_001',
+      target_id: 'enemy_001',
+      payload: { card_id: 'card_fire_ball', required_mp: 1, current_mp: 3, playable: true },
+    },
+    {
+      event_id: 7,
+      action_index: 1,
+      sequence: 6,
       event_type: 'mana_spent',
       actor_id: 'ally_001',
       target_id: null,
       payload: { card_id: 'card_fire_ball', before: 3, amount: 1, after: 2 },
     },
     {
-      event_id: 7,
+      event_id: 8,
       action_index: 1,
-      sequence: 6,
+      sequence: 7,
       event_type: 'card_used',
       actor_id: 'ally_001',
       target_id: 'enemy_001',
       payload: { card_id: 'card_fire_ball' },
     },
     {
-      event_id: 8,
+      event_id: 9,
       action_index: 1,
-      sequence: 7,
+      sequence: 8,
       event_type: 'damage_applied',
       actor_id: 'ally_001',
       target_id: 'enemy_001',
       payload: { before: 28, requested: 12, applied: 12, after: 16 },
     },
     {
-      event_id: 9,
+      event_id: 10,
       action_index: 2,
       sequence: 1,
       event_type: 'character_defeated',
@@ -100,7 +114,7 @@ const replay: BattleReplay = {
       payload: { side: 'enemy' },
     },
     {
-      event_id: 10,
+      event_id: 11,
       action_index: 2,
       sequence: 2,
       event_type: 'action_completed',
@@ -109,7 +123,7 @@ const replay: BattleReplay = {
       payload: { battle_status: 'completed' },
     },
     {
-      event_id: 11,
+      event_id: 12,
       action_index: 2,
       sequence: 3,
       event_type: 'battle_completed',
@@ -334,7 +348,12 @@ describe('App', () => {
     await vi.runOnlyPendingTimersAsync()
 
     expect(wrapper.find('.action-summary').text()).toContain('味方・戦士の行動')
-    expect(wrapper.find('.action-summary').text()).toContain('「火球」を使用')
+    expect(wrapper.find('.action-summary').text()).toContain('① 行動準備')
+    expect(wrapper.find('.action-summary').text()).toContain('② ドロー')
+    expect(wrapper.find('.action-summary').text()).toContain('③ カードアクション')
+    expect(wrapper.find('.action-summary').text()).toContain('ドロー権を1回獲得')
+    expect(wrapper.find('.action-summary').text()).toContain('「火球」を引いた')
+    expect(wrapper.find('.action-summary').text()).toContain('「火球」を選択')
     expect(wrapper.find('.action-summary').text()).toContain('敵・ゴブリンに12ダメージ')
     expect(wrapper.find('.action-summary').text()).toContain('次の行動：ゴブリン')
     expect(wrapper.find('.combatant-actor').text()).toContain('今回の行動者')

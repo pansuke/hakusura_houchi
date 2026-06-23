@@ -29,8 +29,8 @@
 - Status: Accepted
 - Date: 2026-06-23
 - Context: 設計書では BattleEngine と Viewer の分離が最重要原則になっている。
-- Decision: 初期 Viewer は health API の表示だけにする。
-- Impact: 戦闘再生機能は battle events / snapshots の形式が決まってから追加する。
+- Decision: Viewer は BattleEngine が生成した Replay を表示するだけにする。
+- Impact: Action cursor、フェーズ表示、日本語表示は Viewer の責務だが、戦闘結果の計算は行わない。
 
 ## DEC-004: M0-B 対象Masterは3種に限定する
 
@@ -47,3 +47,27 @@
 - Context: 更新された設計書では M0-B で MasterデータAPIを作らないと明記されている。
 - Decision: `game-data.json` の生成までをM0-B範囲とし、API公開はBattleEngineやViewerが必要になった時点で追加する。
 - Impact: 既存の health / status API 以外に Masterデータ取得APIは追加しない。
+
+## DEC-006: HPR / MPR / DS は行動権獲得者だけ処理する
+
+- Status: Accepted
+- Date: 2026-06-23
+- Context: 全生存者のGauge更新だと、相手Action中にも非行動者が回復・ドロー進行し、Action単位の検証が分かりにくくなる。
+- Decision: HPR / MPR / DS は行動権を獲得した現在行動者だけに適用する。HPR / MPR はGaugeではなく確定回復、DSのみDraw Gaugeとして扱う。
+- Impact: `mana_recovered`と`health_recovered`は行動権獲得時の回復を表し、非行動者の回復・Draw Gauge進行は発生しない。
+
+## DEC-007: Replay は display_catalog を含める
+
+- Status: Accepted
+- Date: 2026-06-23
+- Context: Eventは内部IDを正とするが、Viewer通常表示で内部IDを出すと検証しにくい。
+- Decision: BattleReplayに`display_catalog`を含め、参加者名・カード名・カード説明をViewer表示へ渡す。
+- Impact: Viewerは通常表示で日本語名を優先し、内部IDと生EventはDebug表示へ隔離する。
+
+## DEC-008: Action Summary はフェーズ表示にする
+
+- Status: Accepted
+- Date: 2026-06-23
+- Context: Event時系列の箇条書きだけでは、行動準備、ドロー、カード使用、効果、終了判定のどこで何が起きたか判別しづらい。
+- Decision: ViewerのAction Summaryは「行動準備」「ドロー」「カードアクション」「効果解決」「行動終了」の5フェーズで表示する。
+- Impact: ドロー権獲得、引いたカード、対象、MP消費、HP変化、次行動者をAction単位で確認できる。

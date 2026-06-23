@@ -211,6 +211,14 @@ def test_hand_limit_blocks_draw_when_hand_is_full() -> None:
         event.event_type == "card_draw_blocked" and event.actor_id == "ally_001"
         for event in replay.events
     )
+    blocked_event = next(
+        event for event in replay.events if event.event_type == "card_draw_blocked"
+    )
+    assert blocked_event.payload == {
+        "reason": "hand_full",
+        "hand_size": 5,
+        "hand_limit": 5,
+    }
     assert len(replay.snapshots[-1].participants["ally_001"].hand) == 5
 
 
@@ -344,6 +352,13 @@ def test_ds_applies_only_to_actor_draw_gauge() -> None:
         "after": 0,
         "blocked_reason": None,
     }
+    draw_event = next(event for event in replay.events if event.event_type == "card_drawn")
+    assert draw_event.payload == {
+        "card_id": "card_d",
+        "reason": "draw_gauge",
+        "hand_size_before": 3,
+        "hand_size_after": 4,
+    }
 
 
 def test_four_effect_types_are_resolved_in_order() -> None:
@@ -424,6 +439,17 @@ def test_death_and_win_result_are_emitted_once() -> None:
         "action_completed",
         "battle_completed",
     ]
+    action_completed_event = next(
+        event
+        for event in replay.events
+        if event.event_type == "action_completed"
+        and event.action_index == replay.summary.action_count
+    )
+    assert action_completed_event.payload == {
+        "acted_actor_id": "ally_001",
+        "next_actor_id": None,
+        "battle_status": "completed",
+    }
 
 
 def test_max_action_boundary_results_in_draw() -> None:

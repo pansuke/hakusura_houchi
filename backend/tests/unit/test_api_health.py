@@ -5,6 +5,7 @@
 - battle prototype status API はM1/M2の準備状態を返す
 - battle simulate API はReplayを返す
 - battle simulate API は不正Scenarioを422で返す
+- battle simulate API のCORS preflightが成功する
 """
 
 from fastapi.testclient import TestClient
@@ -112,3 +113,18 @@ def test_battle_simulate_api_returns_422_for_invalid_scenario() -> None:
 
     assert response.status_code == 422
     assert "turn_order" in response.json()["detail"]
+
+
+def test_battle_simulate_cors_preflight_allows_post() -> None:
+    client = TestClient(create_app())
+
+    response = client.options(
+        "/api/v1/battles/simulate",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:5173"

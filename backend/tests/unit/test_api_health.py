@@ -2,7 +2,9 @@
 テスト一覧:
 - health API は status=ok と service 名を返す
 - master-data status API は source と generated のパスを返す
-- battle prototype status API は M0 で戦闘エンジン未実装であることを返す
+- battle prototype status API はM1/M2の準備状態を返す
+- battle simulate API はReplayを返す
+- battle simulate API は不正Scenarioを422で返す
 """
 
 from fastapi.testclient import TestClient
@@ -31,10 +33,82 @@ def test_master_data_status_api_returns_expected_paths() -> None:
     }
 
 
-def test_battle_prototype_status_api_marks_engine_as_not_implemented() -> None:
+def test_battle_prototype_status_api_marks_engine_as_ready() -> None:
     client = TestClient(create_app())
 
     response = client.get("/api/v1/battles/prototype-status")
 
     assert response.status_code == 200
-    assert response.json()["engine"] == "not_implemented"
+    assert response.json()["engine"] == "m1_ready"
+
+
+def valid_battle_payload() -> dict[str, object]:
+    return {
+        "battle_id": "battle_api_001",
+        "participants": [
+            {
+                "participant_id": "ally_001",
+                "side": "ally",
+                "character_master_id": "character_ally_001",
+                "max_hp": 20,
+                "max_mp": 3,
+                "initial_hp": 20,
+                "initial_mp": 3,
+                "ds": 0,
+                "mrg": 0,
+                "hrg": 0,
+                "deck": [
+                    {
+                        "card_id": "card_slash",
+                        "mp_cost": 0,
+                        "effects": [{"effect_type": "damage", "target": "enemy", "value": 99}],
+                    }
+                ],
+            },
+            {
+                "participant_id": "enemy_001",
+                "side": "enemy",
+                "character_master_id": "character_enemy_001",
+                "max_hp": 10,
+                "max_mp": 3,
+                "initial_hp": 10,
+                "initial_mp": 3,
+                "ds": 0,
+                "mrg": 0,
+                "hrg": 0,
+                "deck": [
+                    {
+                        "card_id": "card_claw",
+                        "mp_cost": 0,
+                        "effects": [{"effect_type": "damage", "target": "enemy", "value": 1}],
+                    }
+                ],
+            },
+        ],
+        "turn_order": ["ally_001", "enemy_001"],
+        "max_actions": 5,
+        "seed": 1,
+    }
+
+
+def test_battle_simulate_api_returns_replay() -> None:
+    client = TestClient(create_app())
+
+    response = client.post("/api/v1/battles/simulate", json=valid_battle_payload())
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["summary"]["result"] == "ally_win"
+    assert payload["snapshots"][0]["action_index"] == 0
+    assert any(event["event_type"] == "battle_completed" for event in payload["events"])
+
+
+def test_battle_simulate_api_returns_422_for_invalid_scenario() -> None:
+    client = TestClient(create_app())
+    payload = valid_battle_payload()
+    payload["turn_order"] = ["ally_001"]
+
+    response = client.post("/api/v1/battles/simulate", json=payload)
+
+    assert response.status_code == 422
+    assert "turn_order" in response.json()["detail"]

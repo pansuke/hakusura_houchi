@@ -34,6 +34,27 @@ body {
   background: rgba(20, 23, 18, 0.82);
 }
 
+.replay-panel {
+  display: grid;
+  gap: 22px;
+}
+
+.panel-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.result-badge {
+  border: 1px solid rgba(142, 230, 164, 0.38);
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: #8ee6a4;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
 .eyebrow {
   margin: 0 0 12px;
   color: #e1b45f;
@@ -68,6 +89,110 @@ h1 {
   border: 1px solid rgba(244, 241, 232, 0.15);
   border-radius: 8px;
   background: rgba(244, 241, 232, 0.15);
+}
+
+.toolbar,
+.jump-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+button,
+input,
+select {
+  min-height: 34px;
+  border: 1px solid rgba(244, 241, 232, 0.24);
+  border-radius: 6px;
+  padding: 6px 10px;
+  color: #f4f1e8;
+  background: rgba(244, 241, 232, 0.08);
+  font: inherit;
+}
+
+button:not(:disabled) {
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.45;
+}
+
+label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #d8d2c3;
+  font-weight: 700;
+}
+
+input {
+  width: 90px;
+}
+
+.loading-text,
+.error-text,
+.action-line {
+  margin: 0;
+  color: #e1b45f;
+  font-weight: 800;
+}
+
+.error-text {
+  color: #ff8d7c;
+}
+
+.combatants {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.combatant {
+  border: 1px solid rgba(244, 241, 232, 0.15);
+  border-radius: 8px;
+  padding: 16px;
+  background: rgba(26, 31, 24, 0.86);
+}
+
+.combatant h2,
+.events h2 {
+  margin: 0 0 12px;
+  color: #ffffff;
+  font-size: 1.1rem;
+}
+
+.combatant-side {
+  margin: 0 0 8px;
+  color: #e1b45f;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.combatant dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.combatant dl div {
+  display: grid;
+  grid-template-columns: 86px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.events {
+  border-top: 1px solid rgba(244, 241, 232, 0.14);
+  padding-top: 18px;
+}
+
+.events ol {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 20px;
+  color: #d8d2c3;
 }
 
 .status-grid div {
@@ -130,5 +255,14 @@ dd {
 
   .status-grid {
     grid-template-columns: 1fr;
+  }
+
+  .panel-header,
+  .combatants {
+    grid-template-columns: 1fr;
+  }
+
+  .panel-header {
+    display: grid;
   }
 }

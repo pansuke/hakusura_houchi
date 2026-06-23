@@ -2,23 +2,23 @@
 
 放置系 x ハクスラ x デッキ構築 RPG のプロトタイプ基盤です。現段階ではゲーム本体の実装ではなく、Docker で FastAPI と Vue/Vite Viewer を起動し、トップ画面からバックエンド疎通を確認できる M0-A 開発環境基盤を整えています。
 
-## 現在のスコープ: M0-A 開発環境基盤
+## 現在のスコープ
 
+M0-A 開発環境基盤:
 - Docker Compose でバックエンドと Viewer を起動する
 - `make` から build / up / lint / test を実行する
 - Viewer のトップページから FastAPI の health API を確認する
 - DDD と TDD で進めるためのドキュメント置き場を作る
 
-現在は M0-A 完了候補です。元 WBS の M0 に含まれる Master データ基盤は M0-B として分離し、未着手として管理します。
-
-## 次のスコープ: M0-B Master データ基盤
-
+M0-B Master データ基盤:
 - `data/source` の個別 JSON
 - `schemas` の JSON Schema
 - `tools/build_data.py`
 - ID 重複チェック
 - 参照整合性チェック
 - `data/generated/game-data.json` の決定的生成
+
+現在は M0-A 完了候補、M0-B 実装開始済みです。
 
 Postgres、PvP サーバー、認証、課金、Steam 連携、戦闘ロジック本体はまだ導入しません。
 
@@ -52,6 +52,9 @@ make back-lint
 make back-test
 make front-lint
 make front-test
+make data-build
+make data-validate
+make coverage
 ```
 
 まとめて実行する場合:
@@ -60,6 +63,18 @@ make front-test
 make lint
 make test
 ```
+
+`make data-build` は `data/source` と `schemas` を検証し、成功時のみ `data/generated/game-data.json` を置き換えます。`make data-validate` は一時ファイルへ出力するため、既存の生成物を変更しません。
+
+Coverage は 85%以上を品質ゲートとします。
+
+```bash
+make back-coverage
+make front-coverage
+make coverage
+```
+
+Backend coverage は `tools/coverage_inspector.py` で未実行行をシンボル単位に表示します。
 
 ## 構成
 
@@ -74,9 +89,11 @@ backend/
 viewer/
   src/            Vue 3 + TypeScript Viewer
 data/
-  source/         Source JSON master data
-  generated/      Generated game-data.json output
+  source/         Character / Trait / Card の個別JSON
+  generated/      生成済み game-data.json
 schemas/          JSON Schema files
+tools/
+  build_data.py   Masterデータ統合CLI
 docs/             Development notes and decisions
 ```
 
@@ -89,5 +106,6 @@ docs/             Development notes and decisions
 - Master / Instance / Build / BattleState を混同しない
 - 未確定仕様は推測で実装しない
 - Viewer の依存関係は `package-lock.json` と `npm ci` で固定する
+- Masterデータは `data/source` を正本とし、`game-data.json` を直接編集しない
 
 詳細は `docs/development_overview.md` と `docs/decision_log.md` を参照してください。

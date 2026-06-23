@@ -1,0 +1,16 @@
+{
+  "id": "character_warrior_001",
+  "name": "Warrior",
+  "base_stats": {
+    "hp": 120,
+    "mp": 20,
+    "ad": 12,
+    "ap": 0,
+    "ar": 5,
+    "mr": 3,
+    "ds": 10,
+    "mrg": 8,
+    "hrg": 2
+  },
+  "trait_ids": ["trait_adjacent_splash"]
+}

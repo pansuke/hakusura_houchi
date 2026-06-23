@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lane-relay.local/schemas/definitions/effect.schema.json",
+  "title": "Effect",
+  "type": "object",
+  "required": ["type", "target", "power"],
+  "additionalProperties": false,
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": ["damage", "heal", "support"]
+    },
+    "target": {
+      "type": "string",
+      "enum": ["self", "enemy", "ally_lane"]
+    },
+    "power": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}

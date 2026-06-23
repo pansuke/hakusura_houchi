@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lane-relay.local/schemas/character.schema.json",
+  "title": "CharacterMaster",
+  "type": "object",
+  "required": ["id", "name", "base_stats", "trait_ids"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^character_[a-z0-9_]+$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "base_stats": {
+      "type": "object",
+      "required": ["hp", "mp", "ad", "ap", "ar", "mr", "ds", "mrg", "hrg"],
+      "additionalProperties": false,
+      "properties": {
+        "hp": { "type": "integer", "minimum": 1 },
+        "mp": { "type": "integer", "minimum": 0 },
+        "ad": { "type": "integer", "minimum": 0 },
+        "ap": { "type": "integer", "minimum": 0 },
+        "ar": { "type": "integer", "minimum": 0 },
+        "mr": { "type": "integer", "minimum": 0 },
+        "ds": { "type": "integer", "minimum": 0 },
+        "mrg": { "type": "integer", "minimum": 0 },
+        "hrg": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "trait_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "uniqueItems": true
+    }
+  }
+}

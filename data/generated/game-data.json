@@ -1,0 +1,44 @@
+{
+  "cards": [
+    {
+      "effects": [
+        {
+          "power": 12,
+          "target": "enemy",
+          "type": "damage"
+        }
+      ],
+      "id": "card_fire_ball",
+      "mp_cost": 3,
+      "name": "Fire Ball",
+      "rarity": "common"
+    }
+  ],
+  "characters": [
+    {
+      "base_stats": {
+        "ad": 12,
+        "ap": 0,
+        "ar": 5,
+        "ds": 10,
+        "hp": 120,
+        "hrg": 2,
+        "mp": 20,
+        "mr": 3,
+        "mrg": 8
+      },
+      "id": "character_warrior_001",
+      "name": "Warrior",
+      "trait_ids": [
+        "trait_adjacent_splash"
+      ]
+    }
+  ],
+  "traits": [
+    {
+      "description": "カード効果の一部を隣接レーンへ波及させるTrait。",
+      "id": "trait_adjacent_splash",
+      "name": "Adjacent Splash"
+    }
+  ]
+}

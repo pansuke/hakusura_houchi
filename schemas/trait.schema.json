@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lane-relay.local/schemas/trait.schema.json",
+  "title": "TraitMaster",
+  "type": "object",
+  "required": ["id", "name", "description"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^trait_[a-z0-9_]+$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

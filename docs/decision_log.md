@@ -6,7 +6,7 @@
 - Date: 2026-06-23
 - Context: 元 WBS の M0 には開発環境と Master データ基盤の両方が含まれる。
 - Decision: Docker / FastAPI / Viewer / health / lint / test を M0-A、個別 JSON / JSON Schema / build_data.py / 整合性チェックを M0-B として管理する。
-- Impact: 現在の成果物は M0-A 完了候補、M0-B 未着手として判定する。
+- Impact: M0-A と M0-B を別々に完了判定する。
 
 ## DEC-001: M0 では Postgres を導入しない
 
@@ -31,3 +31,19 @@
 - Context: 設計書では BattleEngine と Viewer の分離が最重要原則になっている。
 - Decision: 初期 Viewer は health API の表示だけにする。
 - Impact: 戦闘再生機能は battle events / snapshots の形式が決まってから追加する。
+
+## DEC-004: M0-B 対象Masterは3種に限定する
+
+- Status: Accepted
+- Date: 2026-06-23
+- Context: 更新されたWBSでは M0-B の対象を CharacterMaster / TraitMaster / CardMaster に限定している。
+- Decision: M0-B では `characters`、`traits`、`cards` の個別JSON、Schema、統合生成だけを実装する。
+- Impact: Item / Stage / Area / DropTable などは後続マイルストーンで追加する。
+
+## DEC-005: MasterデータAPIはM0-B対象外とする
+
+- Status: Accepted
+- Date: 2026-06-23
+- Context: 更新された設計書では M0-B で MasterデータAPIを作らないと明記されている。
+- Decision: `game-data.json` の生成までをM0-B範囲とし、API公開はBattleEngineやViewerが必要になった時点で追加する。
+- Impact: 既存の health / status API 以外に Masterデータ取得APIは追加しない。

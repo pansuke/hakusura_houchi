@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lane-relay.local/schemas/definitions/roll_rule.schema.json",
+  "title": "RollRule",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": ["type", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "fixed" },
+        "value": { "type": "integer" }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["type", "min", "max"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "enum": ["flat_range", "percent_range"] },
+        "min": { "type": "integer" },
+        "max": { "type": "integer" }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["type", "table"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "weighted_table" },
+        "table": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["value", "weight"],
+            "additionalProperties": false,
+            "properties": {
+              "value": { "type": "integer" },
+              "weight": { "type": "integer", "minimum": 1 }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

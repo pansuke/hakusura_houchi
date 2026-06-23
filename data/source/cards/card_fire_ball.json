@@ -1,0 +1,13 @@
+{
+  "id": "card_fire_ball",
+  "name": "Fire Ball",
+  "rarity": "common",
+  "mp_cost": 3,
+  "effects": [
+    {
+      "type": "damage",
+      "target": "enemy",
+      "power": 12
+    }
+  ]
+}

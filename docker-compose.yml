@@ -3,10 +3,12 @@ services:
     build:
       context: ./backend
       dockerfile: backend.Dockerfile
+    user: "${UID:-1000}:${GID:-1000}"
     ports:
       - "8000:8000"
     volumes:
       - ./backend:/app
+      - .:/workspace
     environment:
       LANE_RELAY_ENV: local
       LANE_RELAY_CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173

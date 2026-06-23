@@ -1,0 +1,5 @@
+{
+  "id": "trait_adjacent_splash",
+  "name": "Adjacent Splash",
+  "description": "カード効果の一部を隣接レーンへ波及させるTrait。"
+}

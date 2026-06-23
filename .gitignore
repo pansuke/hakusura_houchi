@@ -17,6 +17,6 @@ coverage/
 *.tsbuildinfo
 
 data/generated/*
-!data/generated/generated_data_placeholder.txt
+!data/generated/game-data.json
 
 .DS_Store

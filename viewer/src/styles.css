@@ -254,8 +254,9 @@ input {
 
 .combatant dl div {
   display: grid;
-  grid-template-columns: 86px minmax(0, 1fr);
-  gap: 10px;
+  grid-template-columns: minmax(90px, 0.8fr) minmax(120px, 1.2fr);
+  align-items: center;
+  gap: 12px;
 }
 
 .stat-section,
@@ -334,9 +335,11 @@ input {
 
 .draw-bar-row {
   display: grid;
-  grid-template-columns: minmax(80px, 1fr) 64px;
+  grid-template-columns: minmax(110px, 1fr) max-content;
   align-items: center;
   gap: 8px;
+  min-width: 190px;
+  white-space: nowrap;
 }
 
 .draw-bar {
@@ -368,7 +371,7 @@ dt {
 }
 
 dd {
-  margin: 8px 0 0;
+  margin: 0;
   overflow-wrap: anywhere;
   color: #f4f1e8;
   font-size: 1rem;

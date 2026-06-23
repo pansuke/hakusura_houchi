@@ -59,11 +59,49 @@ export function actionSummaryLines(
 
   const lines: string[] = []
   const usedCard = events.find((event) => event.event_type === 'card_used')
+
+  for (const event of events) {
+    if (
+      event.event_type === 'health_recovered' &&
+      event.payload.reason === 'action_right' &&
+      numberPayload(event, 'applied') > 0
+    ) {
+      lines.push(`HP ${numberPayload(event, 'before')} → ${numberPayload(event, 'after')}（行動時回復）`)
+    }
+    if (
+      event.event_type === 'mana_recovered' &&
+      event.payload.reason === 'action_right' &&
+      numberPayload(event, 'applied') > 0
+    ) {
+      lines.push(`MP ${numberPayload(event, 'before')} → ${numberPayload(event, 'after')}（行動時回復）`)
+    }
+  }
+
+  for (const event of events) {
+    if (event.event_type === 'gauge_changed' && numberPayload(event, 'trigger_count') > 0) {
+      lines.push(
+        `ドロー進捗 ${numberPayload(event, 'before')} + ${numberPayload(event, 'gain')} → ${numberPayload(
+          event,
+          'after',
+        )}（${numberPayload(event, 'trigger_count')}回ドロー）`,
+      )
+    }
+  }
+
+  for (const event of events) {
+    if (event.event_type === 'card_drawn') {
+      lines.push(`「${cardName(catalog, event.payload.card_id)}」を引いた`)
+    }
+  }
+
   if (usedCard) {
     lines.push(`「${cardName(catalog, usedCard.payload.card_id)}」を使用`)
   }
 
   for (const event of events) {
+    if (event.event_type === 'card_used') {
+      continue
+    }
     if (event.event_type === 'mana_spent') {
       lines.push(`MP ${numberPayload(event, 'before')} → ${numberPayload(event, 'after')}`)
     }

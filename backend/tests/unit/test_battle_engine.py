@@ -276,6 +276,13 @@ def test_action_right_recovery_applies_only_to_actor_and_caps_hp_mp() -> None:
         "after": 20,
         "reason": "action_right",
     }
+    action_events = [
+        event.event_type
+        for event in replay.events
+        if event.action_index == 1
+        and event.event_type in {"health_recovered", "mana_recovered", "gauge_changed"}
+    ]
+    assert action_events == ["health_recovered", "mana_recovered", "gauge_changed"]
 
 
 def test_mpr_is_applied_before_card_playability_check() -> None:

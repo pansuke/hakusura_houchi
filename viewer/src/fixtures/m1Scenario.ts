@@ -9,11 +9,11 @@ export const m1Scenario: BattleScenarioRequest = {
       character_master_id: 'character_warrior_001',
       max_hp: 32,
       max_mp: 5,
-      initial_hp: 32,
+      initial_hp: 29,
       initial_mp: 2,
-      ds: 100,
+      ds: 20,
       mpr: 1,
-      hpr: 0,
+      hpr: 3,
       deck: [
         {
           card_id: 'card_fire_ball',

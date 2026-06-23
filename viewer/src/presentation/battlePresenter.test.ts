@@ -27,6 +27,7 @@ const catalog: DisplayCatalog = {
   },
   cards: {
     card_heal: { name: '治癒', mp_cost: 1, description: '自身のHPを3回復' },
+    card_focus: { name: '精神集中', mp_cost: 0, description: '自身のMPを1回復' },
   },
 }
 
@@ -130,16 +131,24 @@ describe('battlePresenter', () => {
 
   test('summarizes heal and mana gain actions', () => {
     const lines = actionSummaryLines(
-      snapshot,
-      [
-        event('card_used', { card_id: 'card_heal' }, 'ally_001', 'ally_001'),
-        event('health_recovered', { before: 10, requested: 3, applied: 3, after: 13, reason: 'card_effect' }, 'ally_001', 'ally_001'),
-        event('mana_gained', { before: 1, requested: 1, applied: 1, after: 2 }, 'ally_001', null),
+        snapshot,
+        [
+          event('health_recovered', { before: 10, requested: 3, applied: 3, after: 13, reason: 'action_right' }, 'ally_001', 'ally_001'),
+          event('mana_recovered', { before: 1, requested: 1, applied: 1, after: 2, reason: 'action_right' }, 'ally_001', 'ally_001'),
+          event('gauge_changed', { before: 80, gain: 20, trigger_count: 1, after: 0 }, 'ally_001', null),
+          event('card_drawn', { card_id: 'card_focus', reason: 'draw_gauge' }, 'ally_001', null),
+          event('card_used', { card_id: 'card_heal' }, 'ally_001', 'ally_001'),
+          event('health_recovered', { before: 10, requested: 3, applied: 3, after: 13, reason: 'card_effect' }, 'ally_001', 'ally_001'),
+          event('mana_gained', { before: 1, requested: 1, applied: 1, after: 2 }, 'ally_001', null),
       ],
       catalog,
     )
 
     expect(lines).toContain('「治癒」を使用')
+    expect(lines).toContain('HP 10 → 13（行動時回復）')
+    expect(lines).toContain('MP 1 → 2（行動時回復）')
+    expect(lines).toContain('ドロー進捗 80 + 20 → 0（1回ドロー）')
+    expect(lines).toContain('「精神集中」を引いた')
     expect(lines).toContain('戦士のHP 10 → 13')
     expect(lines).toContain('戦士のMP 1 → 2')
     expect(lines).toContain('次の行動：-')

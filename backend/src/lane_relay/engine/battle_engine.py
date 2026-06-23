@@ -1,0 +1,2 @@
+class BattleEngine:
+    pass

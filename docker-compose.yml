@@ -1,0 +1,31 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: backend.Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    environment:
+      LANE_RELAY_ENV: local
+      LANE_RELAY_CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
+    command: uvicorn lane_relay.api.main:app --host 0.0.0.0 --port 8000 --reload
+
+  viewer:
+    build:
+      context: ./viewer
+      dockerfile: viewer.Dockerfile
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./viewer:/app
+      - viewer_node_modules:/app/node_modules
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000
+    command: npm run dev -- --host 0.0.0.0
+    depends_on:
+      - backend
+
+volumes:
+  viewer_node_modules:

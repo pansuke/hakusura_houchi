@@ -91,7 +91,6 @@ class BattleSnapshot:
     battle_result: BattleResult
     acted_actor_id: str | None
     next_actor_id: str | None
-    current_actor_id: str | None
     participants: dict[str, ParticipantSnapshot]
 
 
@@ -202,7 +201,7 @@ class BattleEngine:
                 self._complete_battle(runtime, recorder, "draw", "max_actions")
                 snapshots.append(self._snapshot(runtime, acted_actor_id=None))
                 break
-            actor_id = self._current_actor_id(runtime)
+            actor_id = self._active_actor_id(runtime)
             if actor_id is None:
                 self._complete_battle(runtime, recorder, "draw", "no_actor")
                 snapshots.append(self._snapshot(runtime, acted_actor_id=None))
@@ -231,10 +230,14 @@ class BattleEngine:
         sides = {participant.side for participant in scenario.participants}
         if sides != {"ally", "enemy"}:
             raise BattleScenarioError("M1 scenario must have one ally and one enemy.")
-        if scenario.turn_order != participant_ids and set(scenario.turn_order) != set(
-            participant_ids
+        if (
+            len(scenario.turn_order) != len(participant_ids)
+            or len(set(scenario.turn_order)) != len(scenario.turn_order)
+            or set(scenario.turn_order) != set(participant_ids)
         ):
-            raise BattleScenarioError("turn_order must include all participant_id values.")
+            raise BattleScenarioError(
+                "turn_order must contain every participant_id exactly once."
+            )
         for participant in scenario.participants:
             if not participant.deck:
                 raise BattleScenarioError("deck must not be empty.")
@@ -274,13 +277,18 @@ class BattleEngine:
         actor = runtime.participants[actor_id]
         if actor.alive:
             self._attempt_card(runtime, recorder, actor)
-        self._complete_if_needed(runtime, recorder)
+        completion = self._completion_result(runtime)
+        if completion is not None:
+            result, end_reason = completion
+            self._mark_battle_completed(runtime, result, end_reason)
         recorder.record(
             action_index,
             "action_completed",
             actor_id=actor_id,
             payload={"battle_status": runtime.battle_status},
         )
+        if completion is not None:
+            self._record_battle_completed(runtime, recorder)
 
     def _update_gauges(self, runtime: BattleRuntime, recorder: EventRecorder) -> None:
         for participant in runtime.participants.values():
@@ -296,16 +304,25 @@ class BattleEngine:
         recorder: EventRecorder,
         participant: ParticipantRuntime,
     ) -> None:
+        before = participant.draw_gauge
         participant.draw_gauge += participant.setup.ds
+        trigger_count = participant.draw_gauge // GAUGE_THRESHOLD
+        while participant.draw_gauge >= GAUGE_THRESHOLD:
+            participant.draw_gauge -= GAUGE_THRESHOLD
+            self._draw_one(runtime, recorder, participant, reason="draw_gauge")
         recorder.record(
             runtime.action_index,
             "gauge_changed",
             actor_id=participant.setup.participant_id,
-            payload={"gauge": "draw", "value": participant.draw_gauge},
+            payload={
+                "gauge_type": "draw",
+                "before": before,
+                "gain": participant.setup.ds,
+                "trigger_count": trigger_count,
+                "after": participant.draw_gauge,
+                "blocked_reason": None,
+            },
         )
-        while participant.draw_gauge >= GAUGE_THRESHOLD:
-            participant.draw_gauge -= GAUGE_THRESHOLD
-            self._draw_one(runtime, recorder, participant, reason="draw_gauge")
 
     def _increase_mana_gauge(
         self,
@@ -313,16 +330,25 @@ class BattleEngine:
         recorder: EventRecorder,
         participant: ParticipantRuntime,
     ) -> None:
+        before = participant.mana_gauge
         participant.mana_gauge += participant.setup.mrg
+        trigger_count = participant.mana_gauge // GAUGE_THRESHOLD
+        while participant.mana_gauge >= GAUGE_THRESHOLD:
+            participant.mana_gauge -= GAUGE_THRESHOLD
+            self._gain_mana(runtime, recorder, participant, 1, reason="mana_gauge")
         recorder.record(
             runtime.action_index,
             "gauge_changed",
             actor_id=participant.setup.participant_id,
-            payload={"gauge": "mana", "value": participant.mana_gauge},
+            payload={
+                "gauge_type": "mana",
+                "before": before,
+                "gain": participant.setup.mrg,
+                "trigger_count": trigger_count,
+                "after": participant.mana_gauge,
+                "blocked_reason": None,
+            },
         )
-        while participant.mana_gauge >= GAUGE_THRESHOLD:
-            participant.mana_gauge -= GAUGE_THRESHOLD
-            self._gain_mana(runtime, recorder, participant, 1, reason="mana_gauge")
 
     def _increase_health_gauge(
         self,
@@ -330,16 +356,25 @@ class BattleEngine:
         recorder: EventRecorder,
         participant: ParticipantRuntime,
     ) -> None:
+        before = participant.health_gauge
         participant.health_gauge += participant.setup.hrg
+        trigger_count = participant.health_gauge // GAUGE_THRESHOLD
+        while participant.health_gauge >= GAUGE_THRESHOLD:
+            participant.health_gauge -= GAUGE_THRESHOLD
+            self._heal(runtime, recorder, participant, participant, 1, reason="health_gauge")
         recorder.record(
             runtime.action_index,
             "gauge_changed",
             actor_id=participant.setup.participant_id,
-            payload={"gauge": "health", "value": participant.health_gauge},
+            payload={
+                "gauge_type": "health",
+                "before": before,
+                "gain": participant.setup.hrg,
+                "trigger_count": trigger_count,
+                "after": participant.health_gauge,
+                "blocked_reason": None,
+            },
         )
-        while participant.health_gauge >= GAUGE_THRESHOLD:
-            participant.health_gauge -= GAUGE_THRESHOLD
-            self._heal(runtime, recorder, participant, participant, 1, reason="health_gauge")
 
     def _attempt_card(
         self,
@@ -357,12 +392,13 @@ class BattleEngine:
                 payload={"card_id": card.card_id, "mp_cost": card.mp_cost},
             )
             if target is None or actor.mp < card.mp_cost:
+                reason = "no_valid_target" if target is None else "insufficient_mana"
                 recorder.record(
                     runtime.action_index,
                     "card_held",
                     actor_id=actor.setup.participant_id,
                     target_id=target.setup.participant_id if target else None,
-                    payload={"card_id": card.card_id, "reason": "not_playable"},
+                    payload={"card_id": card.card_id, "reason": reason},
                 )
                 continue
             self._use_card(runtime, recorder, actor, card)
@@ -550,7 +586,7 @@ class BattleEngine:
                 payload={"side": participant.setup.side},
             )
 
-    def _complete_if_needed(self, runtime: BattleRuntime, recorder: EventRecorder) -> None:
+    def _completion_result(self, runtime: BattleRuntime) -> tuple[BattleResult, str] | None:
         ally_alive = any(
             participant.alive
             for participant in runtime.participants.values()
@@ -562,13 +598,14 @@ class BattleEngine:
             if participant.setup.side == "enemy"
         )
         if not ally_alive and not enemy_alive:
-            self._complete_battle(runtime, recorder, "draw", "all_defeated")
-        elif not enemy_alive:
-            self._complete_battle(runtime, recorder, "ally_win", "enemy_defeated")
-        elif not ally_alive:
-            self._complete_battle(runtime, recorder, "ally_loss", "ally_defeated")
-        elif runtime.action_index >= runtime.scenario.max_actions:
-            self._complete_battle(runtime, recorder, "draw", "max_actions")
+            return "draw", "all_defeated"
+        if not enemy_alive:
+            return "ally_win", "enemy_defeated"
+        if not ally_alive:
+            return "ally_loss", "ally_defeated"
+        if runtime.action_index >= runtime.scenario.max_actions:
+            return "draw", "max_actions"
+        return None
 
     def _complete_battle(
         self,
@@ -577,16 +614,31 @@ class BattleEngine:
         result: BattleResult,
         end_reason: str,
     ) -> None:
+        self._mark_battle_completed(runtime, result, end_reason)
+        self._record_battle_completed(runtime, recorder)
+
+    def _mark_battle_completed(
+        self,
+        runtime: BattleRuntime,
+        result: BattleResult,
+        end_reason: str,
+    ) -> None:
         runtime.battle_status = "completed"
         runtime.battle_result = result
         runtime.end_reason = end_reason
+
+    def _record_battle_completed(
+        self,
+        runtime: BattleRuntime,
+        recorder: EventRecorder,
+    ) -> None:
         recorder.record(
             runtime.action_index,
             "battle_completed",
-            payload={"result": result, "end_reason": end_reason},
+            payload={"result": runtime.battle_result, "end_reason": runtime.end_reason},
         )
 
-    def _current_actor_id(self, runtime: BattleRuntime) -> str | None:
+    def _active_actor_id(self, runtime: BattleRuntime) -> str | None:
         for offset in range(len(runtime.scenario.turn_order)):
             turn_index = (runtime.current_turn_index + offset) % len(runtime.scenario.turn_order)
             participant_id = runtime.scenario.turn_order[turn_index]
@@ -605,7 +657,7 @@ class BattleEngine:
 
     def _snapshot(self, runtime: BattleRuntime, acted_actor_id: str | None) -> BattleSnapshot:
         next_actor_id = (
-            None if runtime.battle_status == "completed" else self._peek_current_actor_id(runtime)
+            None if runtime.battle_status == "completed" else self._peek_active_actor_id(runtime)
         )
         return BattleSnapshot(
             action_index=runtime.action_index,
@@ -613,7 +665,6 @@ class BattleEngine:
             battle_result=runtime.battle_result,
             acted_actor_id=acted_actor_id,
             next_actor_id=next_actor_id,
-            current_actor_id=next_actor_id,
             participants={
                 participant_id: ParticipantSnapshot(
                     participant_id=participant_id,
@@ -634,7 +685,7 @@ class BattleEngine:
             },
         )
 
-    def _peek_current_actor_id(self, runtime: BattleRuntime) -> str | None:
+    def _peek_active_actor_id(self, runtime: BattleRuntime) -> str | None:
         for offset in range(len(runtime.scenario.turn_order)):
             turn_index = (runtime.current_turn_index + offset) % len(runtime.scenario.turn_order)
             participant_id = runtime.scenario.turn_order[turn_index]

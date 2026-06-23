@@ -10,6 +10,11 @@
 - HPが0になったキャラクターは一度だけdefeatedになり勝敗が確定する
 - 最大Action数に到達すると引き分けになる
 - Event / Snapshot / SummaryのAction Indexと件数が整合する
+- 最終Actionではaction_completedがbattle_completedより先に出る
+- turn_orderは不足・重複・余分な要素を拒否する
+- card_held.reasonは具体的な理由になる
+- gauge_changedはbefore/gain/trigger_count/afterを返す
+- Snapshotはacted_actor_idとnext_actor_idを返す
 """
 
 from dataclasses import asdict
@@ -151,6 +156,11 @@ def test_mana_shortage_holds_card_and_uses_later_playable_card() -> None:
 
     event_types = [event.event_type for event in replay.events]
     assert "card_held" in event_types
+    assert any(
+        event.event_type == "card_held"
+        and event.payload.get("reason") == "insufficient_mana"
+        for event in replay.events
+    )
     assert any(event.payload.get("card_id") == "card_cheap" for event in replay.events)
     snapshot = replay.snapshots[-1].participants["ally_001"]
     assert "card_expensive" in snapshot.hand
@@ -225,6 +235,21 @@ def test_gauges_trigger_multiple_times_and_cap_hp_mp() -> None:
     assert ally_snapshot.hp == 20
     assert ally_snapshot.mana_gauge == 50
     assert ally_snapshot.health_gauge == 50
+    mana_gauge_event = next(
+        event
+        for event in replay.events
+        if event.event_type == "gauge_changed"
+        and event.actor_id == "ally_001"
+        and event.payload["gauge_type"] == "mana"
+    )
+    assert mana_gauge_event.payload == {
+        "gauge_type": "mana",
+        "before": 0,
+        "gain": 250,
+        "trigger_count": 2,
+        "after": 50,
+        "blocked_reason": None,
+    }
 
 
 def test_four_effect_types_are_resolved_in_order() -> None:
@@ -284,6 +309,17 @@ def test_death_and_win_result_are_emitted_once() -> None:
     assert replay.summary.end_reason == "enemy_defeated"
     assert [event.event_type for event in replay.events].count("character_defeated") == 1
     assert replay.snapshots[-1].battle_status == "completed"
+    final_action_events = [
+        event.event_type
+        for event in replay.events
+        if event.action_index == replay.summary.action_count
+    ]
+    assert final_action_events[-4:] == [
+        "damage_applied",
+        "character_defeated",
+        "action_completed",
+        "battle_completed",
+    ]
 
 
 def test_max_action_boundary_results_in_draw() -> None:
@@ -316,16 +352,28 @@ def test_event_snapshot_summary_are_consistent() -> None:
     assert [snapshot.action_index for snapshot in replay.snapshots[1:]] == [1, 2]
     assert all(event.event_id == index + 1 for index, event in enumerate(replay.events))
     assert any(event.event_type == "battle_completed" for event in replay.events)
+    assert replay.snapshots[0].acted_actor_id is None
+    assert replay.snapshots[0].next_actor_id == "ally_001"
+    assert replay.snapshots[1].acted_actor_id == "ally_001"
+    assert replay.snapshots[1].next_actor_id == "enemy_001"
 
 
-def test_scenario_validation_rejects_invalid_turn_order() -> None:
+@pytest.mark.parametrize(
+    "turn_order",
+    [
+        ["ally_001"],
+        ["ally_001", "ally_001"],
+        ["ally_001", "enemy_001", "ghost_001"],
+    ],
+)
+def test_scenario_validation_rejects_invalid_turn_order(turn_order: list[str]) -> None:
     battle_scenario = BattleScenario(
         battle_id="battle_invalid",
         participants=[
             participant("ally_001", "ally", [damage_card("card_hit", 1)]),
             participant("enemy_001", "enemy", [damage_card("card_claw", 1)]),
         ],
-        turn_order=["ally_001"],
+        turn_order=turn_order,
         max_actions=1,
         seed=1,
     )

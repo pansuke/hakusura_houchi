@@ -5,6 +5,10 @@
 - Jumpで任意Actionへ移動できる
 - Autoplayは表示位置を進め、終端で停止する
 - 操作ロック中は多重操作できない
+- acted_actor_id / next_actor_idのキャラクターへ表示タグが付く
+- Action Summaryはカード・ダメージ・次Actorを表示する
+- Event番号は二重表示しない
+- 最終Action以外では最終結果を表示しない
 */
 
 import { mount } from '@vue/test-utils'
@@ -27,19 +31,55 @@ const replay = {
       event_id: 2,
       action_index: 1,
       sequence: 1,
-      event_type: 'damage_applied',
+      event_type: 'card_attempted',
       actor_id: 'ally_001',
       target_id: 'enemy_001',
-      payload: { card_id: 'card_fire_ball' },
+      payload: { card_id: 'card_fire_ball', mp_cost: 1 },
     },
     {
       event_id: 3,
+      action_index: 1,
+      sequence: 2,
+      event_type: 'mana_spent',
+      actor_id: 'ally_001',
+      target_id: null,
+      payload: { card_id: 'card_fire_ball', amount: 1, mp: 2 },
+    },
+    {
+      event_id: 4,
+      action_index: 1,
+      sequence: 3,
+      event_type: 'card_used',
+      actor_id: 'ally_001',
+      target_id: null,
+      payload: { card_id: 'card_fire_ball' },
+    },
+    {
+      event_id: 5,
+      action_index: 1,
+      sequence: 4,
+      event_type: 'damage_applied',
+      actor_id: 'ally_001',
+      target_id: 'enemy_001',
+      payload: { amount: 6, hp: 4 },
+    },
+    {
+      event_id: 6,
       action_index: 2,
       sequence: 1,
+      event_type: 'action_completed',
+      actor_id: 'enemy_001',
+      target_id: null,
+      payload: { battle_status: 'completed' },
+    },
+    {
+      event_id: 7,
+      action_index: 2,
+      sequence: 2,
       event_type: 'battle_completed',
       actor_id: null,
       target_id: null,
-      payload: {},
+      payload: { result: 'ally_win', end_reason: 'enemy_defeated' },
     },
   ],
   snapshots: [
@@ -47,6 +87,8 @@ const replay = {
       action_index: 0,
       battle_status: 'running',
       battle_result: 'undecided',
+      acted_actor_id: null,
+      next_actor_id: 'ally_001',
       participants: {
         ally_001: participant('ally_001', 'ally', 20),
         enemy_001: participant('enemy_001', 'enemy', 10),
@@ -56,6 +98,8 @@ const replay = {
       action_index: 1,
       battle_status: 'running',
       battle_result: 'undecided',
+      acted_actor_id: 'ally_001',
+      next_actor_id: 'enemy_001',
       participants: {
         ally_001: participant('ally_001', 'ally', 20),
         enemy_001: participant('enemy_001', 'enemy', 4),
@@ -65,6 +109,8 @@ const replay = {
       action_index: 2,
       battle_status: 'completed',
       battle_result: 'ally_win',
+      acted_actor_id: 'enemy_001',
+      next_actor_id: null,
       participants: {
         ally_001: participant('ally_001', 'ally', 20),
         enemy_001: participant('enemy_001', 'enemy', 0, false),
@@ -111,7 +157,7 @@ async function mountLoadedApp() {
   )
   const wrapper = mount(App)
   await vi.waitFor(() => {
-    expect(wrapper.text()).toContain('Action #0 / 2')
+    expect(wrapper.text()).toContain('Action 0 / 2')
   })
   return wrapper
 }
@@ -125,7 +171,7 @@ describe('App', () => {
       expect.objectContaining({ method: 'POST' }),
     )
     expect(wrapper.text()).toContain('ally_001')
-    expect(wrapper.text()).toContain('battle_started')
+    expect(wrapper.text()).toContain('Battle ready')
 
     wrapper.unmount()
   })
@@ -136,23 +182,23 @@ describe('App', () => {
 
     await wrapper.findAll('button').find((button) => button.text() === 'Next')?.trigger('click')
     await vi.runOnlyPendingTimersAsync()
-    expect(wrapper.text()).toContain('Action #1 / 2')
+    expect(wrapper.text()).toContain('Action 1 / 2')
 
     await wrapper.findAll('button').find((button) => button.text() === 'Prev')?.trigger('click')
     await vi.runOnlyPendingTimersAsync()
-    expect(wrapper.text()).toContain('Action #0 / 2')
+    expect(wrapper.text()).toContain('Action 0 / 2')
 
     await wrapper.findAll('button').find((button) => button.text() === '+10')?.trigger('click')
     await vi.runOnlyPendingTimersAsync()
-    expect(wrapper.text()).toContain('Action #2 / 2')
+    expect(wrapper.text()).toContain('Action 2 / 2')
 
     await wrapper.findAll('button').find((button) => button.text() === 'First')?.trigger('click')
     await vi.runOnlyPendingTimersAsync()
-    expect(wrapper.text()).toContain('Action #0 / 2')
+    expect(wrapper.text()).toContain('Action 0 / 2')
 
     await wrapper.findAll('button').find((button) => button.text() === 'Last')?.trigger('click')
     await vi.runOnlyPendingTimersAsync()
-    expect(wrapper.text()).toContain('Action #2 / 2')
+    expect(wrapper.text()).toContain('Action 2 / 2')
 
     wrapper.unmount()
   })
@@ -166,7 +212,7 @@ describe('App', () => {
     await input.trigger('change')
     await vi.runOnlyPendingTimersAsync()
 
-    expect(wrapper.text()).toContain('Action #2 / 2')
+    expect(wrapper.text()).toContain('Action 2 / 2')
     wrapper.unmount()
   })
 
@@ -177,7 +223,7 @@ describe('App', () => {
     await wrapper.findAll('button').find((button) => button.text() === 'Auto')?.trigger('click')
     await vi.advanceTimersByTimeAsync(1600)
 
-    expect(wrapper.text()).toContain('Action #2 / 2')
+    expect(wrapper.text()).toContain('Action 2 / 2')
     expect(wrapper.text()).toContain('Auto')
     wrapper.unmount()
   })
@@ -190,8 +236,46 @@ describe('App', () => {
     await nextButton?.trigger('click')
     await nextButton?.trigger('click')
 
-    expect(wrapper.text()).toContain('Action #1 / 2')
+    expect(wrapper.text()).toContain('Action 1 / 2')
     await vi.runOnlyPendingTimersAsync()
+    wrapper.unmount()
+  })
+
+  test('marks acted and next participants', async () => {
+    vi.useFakeTimers()
+    const wrapper = await mountLoadedApp()
+
+    await wrapper.findAll('button').find((button) => button.text() === 'Next')?.trigger('click')
+    await vi.runOnlyPendingTimersAsync()
+
+    expect(wrapper.find('.combatant-actor').text()).toContain('ally_001')
+    expect(wrapper.find('.combatant-next').text()).toContain('enemy_001')
+    wrapper.unmount()
+  })
+
+  test('renders action summary and readable event text', async () => {
+    vi.useFakeTimers()
+    const wrapper = await mountLoadedApp()
+
+    await wrapper.findAll('button').find((button) => button.text() === 'Next')?.trigger('click')
+    await vi.runOnlyPendingTimersAsync()
+
+    expect(wrapper.text()).toContain('ally_001 used card_fire_ball on enemy_001')
+    expect(wrapper.text()).toContain('enemy_001 took 6 damage')
+    expect(wrapper.text()).toContain('Next: enemy_001')
+    expect(wrapper.text()).not.toContain('1. 1.')
+    wrapper.unmount()
+  })
+
+  test('hides final result until the last action', async () => {
+    vi.useFakeTimers()
+    const wrapper = await mountLoadedApp()
+
+    expect(wrapper.find('.result-badge').text()).toBe('running')
+    await wrapper.findAll('button').find((button) => button.text() === 'Last')?.trigger('click')
+    await vi.runOnlyPendingTimersAsync()
+
+    expect(wrapper.find('.result-badge').text()).toBe('ally_win / enemy_defeated')
     wrapper.unmount()
   })
 })

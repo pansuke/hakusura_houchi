@@ -50,271 +50,105 @@
       <p v-else-if="!replay" class="loading-text">loading replay</p>
 
       <template v-if="currentSnapshot">
-        <div class="action-line">
-          Action #{{ currentSnapshot.action_index }} / {{ lastCursor }}
-        </div>
+        <ActionSummary
+          :events="currentEvents"
+          :last-cursor="lastCursor"
+          :snapshot="currentSnapshot"
+        />
 
         <section class="combatants">
-          <article
+          <ParticipantCard
             v-for="participant in participantList"
             :key="participant.participant_id"
-            class="combatant"
-          >
-            <p class="combatant-side">{{ participant.side }}</p>
-            <h2>{{ participant.participant_id }}</h2>
-            <dl>
-              <div><dt>HP</dt><dd>{{ participant.hp }} / {{ participant.max_hp }}</dd></div>
-              <div><dt>MP</dt><dd>{{ participant.mp }} / {{ participant.max_mp }}</dd></div>
-              <div><dt>Alive</dt><dd>{{ participant.alive ? 'yes' : 'no' }}</dd></div>
-              <div><dt>Gauge</dt><dd>D{{ participant.draw_gauge }} M{{ participant.mana_gauge }} H{{ participant.health_gauge }}</dd></div>
-              <div><dt>Hand</dt><dd>{{ participant.hand.join(', ') || '-' }}</dd></div>
-              <div><dt>Draw</dt><dd>{{ participant.draw_pile.length }}</dd></div>
-              <div><dt>Discard</dt><dd>{{ participant.discard_pile.length }}</dd></div>
-            </dl>
-          </article>
+            :is-actor="participant.participant_id === currentSnapshot.acted_actor_id"
+            :is-next="participant.participant_id === currentSnapshot.next_actor_id"
+            :is-target="targetIds.has(participant.participant_id)"
+            :participant="participant"
+          />
         </section>
 
-        <section class="events">
-          <h2>Events</h2>
-          <ol>
-            <li v-for="event in currentEvents" :key="event.event_id">
-              {{ eventText(event) }}
-            </li>
-          </ol>
-        </section>
+        <EventTimeline :events="currentEvents" />
       </template>
     </section>
   </main>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
-type BattleEvent = {
-  event_id: number
-  action_index: number
-  sequence: number
-  event_type: string
-  actor_id: string | null
-  target_id: string | null
-  payload: Record<string, unknown>
-}
-
-type ParticipantSnapshot = {
-  participant_id: string
-  side: string
-  hp: number
-  max_hp: number
-  mp: number
-  max_mp: number
-  alive: boolean
-  draw_gauge: number
-  mana_gauge: number
-  health_gauge: number
-  hand: string[]
-  draw_pile: string[]
-  discard_pile: string[]
-}
-
-type BattleSnapshot = {
-  action_index: number
-  battle_status: string
-  battle_result: string
-  participants: Record<string, ParticipantSnapshot>
-}
-
-type BattleReplay = {
-  events: BattleEvent[]
-  snapshots: BattleSnapshot[]
-  summary: {
-    result: string
-    end_reason: string
-    action_count: number
-  }
-}
+import { simulateBattle } from './api/battleApi'
+import ActionSummary from './components/ActionSummary.vue'
+import EventTimeline from './components/EventTimeline.vue'
+import ParticipantCard from './components/ParticipantCard.vue'
+import { useReplayController } from './composables/useReplayController'
+import { m1Scenario } from './fixtures/m1Scenario'
+import type { BattleReplay } from './types/battleReplay'
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
 const replay = ref<BattleReplay | null>(null)
-const cursor = ref(0)
-const jumpTarget = ref(0)
-const autoplay = ref(false)
-const isBusy = ref(false)
-const speedMs = ref(700)
 const errorMessage = ref('')
-let autoplayTimer: number | undefined
 
-const currentSnapshot = computed(() => replay.value?.snapshots[cursor.value] ?? null)
-const lastCursor = computed(() => Math.max(0, (replay.value?.snapshots.length ?? 1) - 1))
-const isAtLast = computed(() => cursor.value >= lastCursor.value)
+const {
+  cursor,
+  jumpTarget,
+  autoplay,
+  isBusy,
+  speedMs,
+  currentSnapshot,
+  lastCursor,
+  isAtLast,
+  resetCursor,
+  goFirst,
+  goPrevious,
+  goNext,
+  stepBy,
+  goLast,
+  jumpTo,
+  toggleAutoplay,
+} = useReplayController(replay)
+
 const resultLabel = computed(() => {
   if (!replay.value) {
     return 'loading'
   }
+  if (!isAtLast.value) {
+    return 'running'
+  }
   return `${replay.value.summary.result} / ${replay.value.summary.end_reason}`
 })
+
 const participantList = computed(() =>
   Object.values(currentSnapshot.value?.participants ?? {}).sort((left, right) =>
     left.participant_id.localeCompare(right.participant_id),
   ),
 )
+
 const currentEvents = computed(() =>
   (replay.value?.events ?? []).filter(
     (event) => event.action_index === currentSnapshot.value?.action_index,
   ),
 )
 
-function defaultScenario(): Record<string, unknown> {
-  return {
-    battle_id: 'battle_viewer_001',
-    participants: [
-      {
-        participant_id: 'ally_001',
-        side: 'ally',
-        character_master_id: 'character_warrior_001',
-        max_hp: 32,
-        max_mp: 5,
-        initial_hp: 32,
-        initial_mp: 3,
-        ds: 100,
-        mrg: 50,
-        hrg: 0,
-        deck: [
-          {
-            card_id: 'card_fire_ball',
-            mp_cost: 1,
-            effects: [{ effect_type: 'damage', target: 'enemy', value: 12 }],
-          },
-          {
-            card_id: 'card_focus',
-            mp_cost: 0,
-            effects: [{ effect_type: 'gain_mana', target: 'self', value: 1 }],
-          },
-          {
-            card_id: 'card_recover',
-            mp_cost: 1,
-            effects: [{ effect_type: 'heal', target: 'self', value: 3 }],
-          },
-        ],
-      },
-      {
-        participant_id: 'enemy_001',
-        side: 'enemy',
-        character_master_id: 'character_enemy_001',
-        max_hp: 28,
-        max_mp: 3,
-        initial_hp: 28,
-        initial_mp: 2,
-        ds: 0,
-        mrg: 50,
-        hrg: 0,
-        deck: [
-          {
-            card_id: 'card_claw',
-            mp_cost: 0,
-            effects: [{ effect_type: 'damage', target: 'enemy', value: 5 }],
-          },
-        ],
-      },
-    ],
-    turn_order: ['ally_001', 'enemy_001'],
-    max_actions: 12,
-    seed: 1,
-  }
-}
+const targetIds = computed(
+  () =>
+    new Set(
+      currentEvents.value
+        .map((event) => event.target_id)
+        .filter((targetId): targetId is string => targetId !== null),
+    ),
+)
 
 async function loadReplay(): Promise<void> {
   errorMessage.value = ''
-  const response = await fetch(`${apiBaseUrl}/api/v1/battles/simulate`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(defaultScenario()),
-  })
-  if (!response.ok) {
+  try {
+    replay.value = await simulateBattle(apiBaseUrl, m1Scenario)
+    resetCursor()
+  } catch {
     errorMessage.value = 'failed to load replay'
-    return
-  }
-  replay.value = (await response.json()) as BattleReplay
-  cursor.value = 0
-  jumpTarget.value = 0
-}
-
-async function withLock(operation: () => void): Promise<void> {
-  if (isBusy.value) {
-    return
-  }
-  isBusy.value = true
-  operation()
-  window.setTimeout(() => {
-    isBusy.value = false
-  }, Math.min(speedMs.value, 300))
-}
-
-function setCursor(nextCursor: number): void {
-  cursor.value = Math.min(Math.max(nextCursor, 0), lastCursor.value)
-  jumpTarget.value = cursor.value
-  if (isAtLast.value) {
-    autoplay.value = false
   }
 }
-
-function goFirst(): void {
-  void withLock(() => setCursor(0))
-}
-
-function goPrevious(): void {
-  void withLock(() => setCursor(cursor.value - 1))
-}
-
-function goNext(): void {
-  void withLock(() => setCursor(cursor.value + 1))
-}
-
-function stepBy(amount: number): void {
-  void withLock(() => setCursor(cursor.value + amount))
-}
-
-function goLast(): void {
-  void withLock(() => setCursor(lastCursor.value))
-}
-
-function jumpTo(): void {
-  void withLock(() => setCursor(Number(jumpTarget.value) || 0))
-}
-
-function toggleAutoplay(): void {
-  autoplay.value = !autoplay.value
-}
-
-function eventText(event: BattleEvent): string {
-  const actor = event.actor_id ?? 'system'
-  const target = event.target_id ? ` -> ${event.target_id}` : ''
-  const card = event.payload.card_id ? ` ${event.payload.card_id}` : ''
-  return `${event.sequence}. ${event.event_type}: ${actor}${target}${card}`
-}
-
-watch([autoplay, speedMs], () => {
-  if (autoplayTimer) {
-    window.clearInterval(autoplayTimer)
-  }
-  if (!autoplay.value) {
-    return
-  }
-  autoplayTimer = window.setInterval(() => {
-    if (isAtLast.value) {
-      autoplay.value = false
-      return
-    }
-    setCursor(cursor.value + 1)
-  }, speedMs.value)
-})
 
 onMounted(() => {
   void loadReplay()
-})
-
-onUnmounted(() => {
-  if (autoplayTimer) {
-    window.clearInterval(autoplayTimer)
-  }
 })
 </script>

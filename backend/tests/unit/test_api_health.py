@@ -5,6 +5,7 @@
 - battle prototype status API はM1/M2の準備状態を返す
 - battle simulate API はReplayを返す
 - battle simulate API は不正Scenarioを422で返す
+- battle simulate API は不正なenum相当値を422で返す
 - battle simulate API のCORS preflightが成功する
 """
 
@@ -113,6 +114,42 @@ def test_battle_simulate_api_returns_422_for_invalid_scenario() -> None:
 
     assert response.status_code == 422
     assert "turn_order" in response.json()["detail"]
+
+
+def test_battle_simulate_api_returns_422_for_invalid_side() -> None:
+    client = TestClient(create_app())
+    payload = valid_battle_payload()
+    participants = payload["participants"]
+    assert isinstance(participants, list)
+    participants[0]["side"] = "neutral"
+
+    response = client.post("/api/v1/battles/simulate", json=payload)
+
+    assert response.status_code == 422
+
+
+def test_battle_simulate_api_returns_422_for_invalid_effect_type() -> None:
+    client = TestClient(create_app())
+    payload = valid_battle_payload()
+    participants = payload["participants"]
+    assert isinstance(participants, list)
+    participants[0]["deck"][0]["effects"][0]["effect_type"] = "poison"
+
+    response = client.post("/api/v1/battles/simulate", json=payload)
+
+    assert response.status_code == 422
+
+
+def test_battle_simulate_api_returns_422_for_invalid_target() -> None:
+    client = TestClient(create_app())
+    payload = valid_battle_payload()
+    participants = payload["participants"]
+    assert isinstance(participants, list)
+    participants[0]["deck"][0]["effects"][0]["target"] = "all"
+
+    response = client.post("/api/v1/battles/simulate", json=payload)
+
+    assert response.status_code == 422
 
 
 def test_battle_simulate_cors_preflight_allows_post() -> None:

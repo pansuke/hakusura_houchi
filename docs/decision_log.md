@@ -1,5 +1,13 @@
 # Decision Log
 
+## DEC-000: M0 を M0-A と M0-B に分割する
+
+- Status: Accepted
+- Date: 2026-06-23
+- Context: 元 WBS の M0 には開発環境と Master データ基盤の両方が含まれる。
+- Decision: Docker / FastAPI / Viewer / health / lint / test を M0-A、個別 JSON / JSON Schema / build_data.py / 整合性チェックを M0-B として管理する。
+- Impact: 現在の成果物は M0-A 完了候補、M0-B 未着手として判定する。
+
 ## DEC-001: M0 では Postgres を導入しない
 
 - Status: Accepted

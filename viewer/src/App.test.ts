@@ -5,21 +5,26 @@
 */
 
 import { mount } from '@vue/test-utils'
-import { describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import App from './App.vue'
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 describe('App', () => {
   test('renders prototype status labels', () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(() => new Promise(() => undefined)),
+      vi.fn().mockRejectedValue(new Error('backend unavailable')),
     )
 
     const wrapper = mount(App)
 
     expect(wrapper.text()).toContain('Lane Relay Prototype')
     expect(wrapper.text()).toContain('not implemented')
+    wrapper.unmount()
   })
 
   test('renders backend ok when health API responds ok', async () => {
@@ -35,5 +40,6 @@ describe('App', () => {
     await vi.waitFor(() => {
       expect(wrapper.text()).toContain('backend: ok')
     })
+    wrapper.unmount()
   })
 })

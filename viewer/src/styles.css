@@ -104,6 +104,25 @@ dd {
   color: #e1b45f;
 }
 
+.retry-button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  margin-left: 10px;
+  border: 1px solid rgba(244, 241, 232, 0.26);
+  border-radius: 6px;
+  padding: 4px 10px;
+  color: #f4f1e8;
+  background: rgba(244, 241, 232, 0.08);
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.retry-button:hover {
+  background: rgba(244, 241, 232, 0.16);
+}
+
 @media (max-width: 760px) {
   .app-shell {
     padding: 18px;

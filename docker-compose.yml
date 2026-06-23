@@ -11,6 +11,18 @@ services:
       LANE_RELAY_ENV: local
       LANE_RELAY_CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
     command: uvicorn lane_relay.api.main:app --host 0.0.0.0 --port 8000 --reload
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
 
   viewer:
     build:
@@ -25,7 +37,8 @@ services:
       VITE_API_BASE_URL: http://localhost:8000
     command: npm run dev -- --host 0.0.0.0
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 
 volumes:
   viewer_node_modules:

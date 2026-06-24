@@ -7,6 +7,7 @@
 - battle simulate API は不正Scenarioを422で返す
 - battle simulate API は不正なenum相当値を422で返す
 - battle simulate API のCORS preflightが成功する
+- battle simulate API はOpenAPI上でReplayレスポンスSchemaを持つ
 """
 
 from fastapi.testclient import TestClient
@@ -103,6 +104,7 @@ def test_battle_simulate_api_returns_replay() -> None:
     assert payload["summary"]["result"] == "ally_win"
     assert payload["snapshots"][0]["action_index"] == 0
     assert any(event["event_type"] == "battle_completed" for event in payload["events"])
+    assert "display_catalog" in payload
 
 
 def test_battle_simulate_api_returns_422_for_invalid_scenario() -> None:
@@ -165,3 +167,15 @@ def test_battle_simulate_cors_preflight_allows_post() -> None:
 
     assert response.status_code == 200
     assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
+
+
+def test_battle_simulate_openapi_has_replay_response_schema() -> None:
+    client = TestClient(create_app())
+
+    response = client.get("/openapi.json")
+
+    assert response.status_code == 200
+    operation = response.json()["paths"]["/api/v1/battles/simulate"]["post"]
+    assert operation["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/BattleReplayResponse"
+    }

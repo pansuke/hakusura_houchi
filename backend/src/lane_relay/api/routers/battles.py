@@ -3,7 +3,11 @@ from typing import cast
 
 from fastapi import APIRouter, HTTPException
 
-from lane_relay.api.schemas import BattlePrototypeStatus, BattleSimulateRequest
+from lane_relay.api.schemas import (
+    BattlePrototypeStatus,
+    BattleReplayResponse,
+    BattleSimulateRequest,
+)
 from lane_relay.engine.battle_engine import (
     BattleCard,
     BattleEffect,
@@ -28,7 +32,7 @@ def get_battle_prototype_status() -> BattlePrototypeStatus:
     )
 
 
-@router.post("/simulate")
+@router.post("/simulate", response_model=BattleReplayResponse)
 def simulate_battle(request: BattleSimulateRequest) -> dict[str, object]:
     try:
         replay = BattleEngine().simulate(to_scenario(request))

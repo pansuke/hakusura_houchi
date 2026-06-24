@@ -2,6 +2,9 @@
 テスト一覧:
 - マウント時にsimulate APIからReplayを読み込んで行動0を表示する
 - 操作ボタンは日本語で表示され、cursorを移動できる
+- +100操作は終端へ丸められる
+- 演出ロック中は多重操作できない
+- 再生速度の変更はReplay結果を変えない
 - 最終Action以外では最終結果を表示しない
 - 通常表示にはAlive yes / Mana Gauge / Health Gaugeを表示しない
 - 通常表示では日本語キャラクター名・カード名・カードチップを表示する
@@ -281,6 +284,59 @@ describe('App', () => {
     await vi.runOnlyPendingTimersAsync()
     expect(wrapper.text()).toContain('行動 0 / 2')
 
+    wrapper.unmount()
+  })
+
+  test('hundred forward clamps cursor to last action', async () => {
+    vi.useFakeTimers()
+    const wrapper = await mountLoadedApp()
+
+    await wrapper.findAll('button').find((button) => button.text() === '+100')?.trigger('click')
+    await vi.runOnlyPendingTimersAsync()
+
+    expect(wrapper.text()).toContain('行動 2 / 2')
+    wrapper.unmount()
+  })
+
+  test('animation lock prevents repeated operation while busy', async () => {
+    vi.useFakeTimers()
+    const wrapper = await mountLoadedApp()
+    const nextButton = wrapper.findAll('button').find((button) => button.text() === '次へ')
+
+    await nextButton?.trigger('click')
+    await nextButton?.trigger('click')
+
+    expect(wrapper.text()).toContain('行動 1 / 2')
+    expect(wrapper.text()).not.toContain('行動 2 / 2')
+
+    await vi.runOnlyPendingTimersAsync()
+    await nextButton?.trigger('click')
+    await vi.runOnlyPendingTimersAsync()
+
+    expect(wrapper.text()).toContain('行動 2 / 2')
+    wrapper.unmount()
+  })
+
+  test('speed changes do not change replay result', async () => {
+    vi.useFakeTimers()
+    const wrapper = await mountLoadedApp()
+    const speedSelect = wrapper.get('select')
+    const goLastButton = wrapper.findAll('button').find((button) => button.text() === '最後')
+    const goFirstButton = wrapper.findAll('button').find((button) => button.text() === '最初')
+
+    await speedSelect.setValue('250')
+    await goLastButton?.trigger('click')
+    await vi.runOnlyPendingTimersAsync()
+    expect(wrapper.find('.result-badge').text()).toBe('勝利 / 敵を撃破')
+
+    await goFirstButton?.trigger('click')
+    await vi.runOnlyPendingTimersAsync()
+    await speedSelect.setValue('1200')
+    await goLastButton?.trigger('click')
+    await vi.runOnlyPendingTimersAsync()
+
+    expect(wrapper.find('.result-badge').text()).toBe('勝利 / 敵を撃破')
+    expect(fetch).toHaveBeenCalledTimes(1)
     wrapper.unmount()
   })
 

@@ -615,18 +615,20 @@ Ready
 
 # 11. M2 Definition of Done
 
-- [ ] simulate APIがReplayを返す
-- [ ] ViewerがReplayを表示する
-- [ ] nextで1Action進む
-- [ ] previousで1Action戻る
-- [ ] jumpが動く
-- [ ] autoplayが動く
-- [ ] speedが戦闘結果へ影響しない
-- [ ] 演出中に多重操作できない
-- [ ] 終了位置でnext無効
-- [ ] Viewerに戦闘計算がない
-- [ ] Front test成功
-- [ ] Back test成功
+- [x] simulate APIがReplayを返す
+- [x] simulate APIがReplay response schemaを持つ
+- [x] ViewerがReplayを表示する
+- [x] nextで1Action進む
+- [x] previousで1Action戻る
+- [x] +10 / +100が終端へ丸められる
+- [x] jumpが動く
+- [x] autoplayが動く
+- [x] speedが戦闘結果へ影響しない
+- [x] 演出中に多重操作できない
+- [x] 終了位置でnext無効
+- [x] Viewerに戦闘計算がない
+- [x] Front test成功
+- [x] Back test成功
 
 ---
 

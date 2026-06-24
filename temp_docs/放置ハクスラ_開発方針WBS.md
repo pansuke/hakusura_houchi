@@ -531,24 +531,24 @@ Ready
 
 # 8. M1 Definition of Done
 
-- [ ] 味方1体・敵1体で最後まで計算できる
-- [ ] BattleScenario検証がある
-- [ ] Action #0 Snapshotがある
-- [ ] Action #1以降のSnapshotがある
-- [ ] Deck Runtimeが仕様通り
-- [ ] Gaugeが仕様通り
-- [ ] 4Effectが動く
-- [ ] 死亡・勝敗が動く
-- [ ] Action #max_actions後に引き分け
-- [ ] Event payloadが契約通り
-- [ ] Summaryが生成される
-- [ ] Event / Snapshot / Summaryが整合
-- [ ] 同一入力で同一結果
-- [ ] Viewer未実装
-- [ ] 復活未実装
-- [ ] 3レーン未実装
-- [ ] make lint成功
-- [ ] make test成功
+- [x] 味方1体・敵1体で最後まで計算できる
+- [x] BattleScenario検証がある
+- [x] Action #0 Snapshotがある
+- [x] Action #1以降のSnapshotがある
+- [x] Deck Runtimeが仕様通り
+- [x] Gaugeが仕様通り
+- [x] 4Effectが動く
+- [x] 死亡・勝敗が動く
+- [x] Action #max_actions後に引き分け
+- [x] Event payloadが契約通り
+- [x] Summaryが生成される
+- [x] Event / Snapshot / Summaryが整合
+- [x] 同一入力で同一結果
+- [x] Viewerは戦闘計算を持たない
+- [x] 復活未実装
+- [x] 3レーン未実装
+- [x] make lint成功
+- [x] make test成功
 
 ---
 

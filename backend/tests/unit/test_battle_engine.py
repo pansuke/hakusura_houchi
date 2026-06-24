@@ -12,6 +12,7 @@
 - Event / Snapshot / SummaryのAction Indexと件数が整合する
 - 最終Actionではaction_completedがbattle_completedより先に出る
 - turn_orderは不足・重複・余分な要素を拒否する
+- BattleScenarioは不正な参加者・カード・Effect定義を拒否する
 - card_held.reasonは具体的な理由になる
 - gauge_changedはbefore/gain/trigger_count/afterを返す
 - Snapshotはacted_actor_idとnext_actor_idを返す
@@ -512,6 +513,59 @@ def test_scenario_validation_rejects_invalid_turn_order(turn_order: list[str]) -
         turn_order=turn_order,
         max_actions=1,
         seed=1,
+    )
+
+    with pytest.raises(BattleScenarioError):
+        BattleEngine().simulate(battle_scenario)
+
+
+@pytest.mark.parametrize(
+    "ally",
+    [
+        participant("ally_001", "ally", []),
+        participant(
+            "ally_001",
+            "ally",
+            [damage_card("card_hit", 1)],
+            hp=10,
+            initial_hp=11,
+        ),
+        participant(
+            "ally_001",
+            "ally",
+            [damage_card("card_hit", 1)],
+            mp=3,
+            initial_mp=4,
+        ),
+        participant("ally_001", "ally", [damage_card("card_hit", 1)], ds=-1),
+        participant("ally_001", "ally", [damage_card("card_hit", 1)], mpr=-1),
+        participant("ally_001", "ally", [damage_card("card_hit", 1)], hpr=-1),
+        participant("ally_001", "ally", [damage_card("card_hit", 1, mp_cost=-1)]),
+        participant("ally_001", "ally", [BattleCard("card_empty", 0, [])]),
+        participant(
+            "ally_001",
+            "ally",
+            [BattleCard("card_negative", 0, [BattleEffect("damage", "enemy", -1)])],
+        ),
+        participant(
+            "ally_001",
+            "ally",
+            [BattleCard("card_unknown_effect", 0, [BattleEffect("unknown", "enemy", 1)])],
+        ),
+        participant(
+            "ally_001",
+            "ally",
+            [BattleCard("card_unknown_target", 0, [BattleEffect("damage", "ally", 1)])],
+        ),
+    ],
+)
+def test_scenario_validation_rejects_invalid_participant_setup(
+    ally: BattleParticipantSetup,
+) -> None:
+    battle_scenario = scenario(
+        ally,
+        participant("enemy_001", "enemy", [damage_card("card_claw", 1)]),
+        max_actions=1,
     )
 
     with pytest.raises(BattleScenarioError):

@@ -12,6 +12,8 @@ EffectTarget = Literal["self", "enemy"]
 GAUGE_THRESHOLD = 100
 HAND_LIMIT = 5
 INITIAL_HAND_SIZE = 3
+ALLOWED_EFFECT_TYPES: set[str] = {"damage", "heal", "gain_mana", "draw_card"}
+ALLOWED_EFFECT_TARGETS: set[str] = {"self", "enemy"}
 
 
 class BattleScenarioError(ValueError):
@@ -259,6 +261,10 @@ class BattleEngine:
                 if not card.effects:
                     raise BattleScenarioError("card effects must not be empty.")
                 for effect in card.effects:
+                    if effect.effect_type not in ALLOWED_EFFECT_TYPES:
+                        raise BattleScenarioError("effect_type must be supported.")
+                    if effect.target not in ALLOWED_EFFECT_TARGETS:
+                        raise BattleScenarioError("effect target must be supported.")
                     if effect.value < 0:
                         raise BattleScenarioError(
                             "effect value must be greater than or equal to 0."

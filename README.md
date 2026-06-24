@@ -1,6 +1,6 @@
 # Lane Relay
 
-放置系 x ハクスラ x デッキ構築 RPG のプロトタイプ基盤です。Docker で FastAPI と Vue/Vite Viewer を起動し、M1の1対1BattleEngineとM2のReplay API / 開発Viewerを検証できます。
+放置系 x ハクスラ x デッキ構築 RPG のプロトタイプ基盤です。Docker で FastAPI と Vue/Vite Viewer を起動し、M3の3レーンBattleEngineとReplay API / 開発Viewerを検証できます。
 
 ## 現在のスコープ
 
@@ -20,21 +20,18 @@ M0-B Master データ基盤:
 
 現在の到達点:
 
-- M0-A: 完了候補
-- M0-B: 完了候補
-- M1: 実装済み
-- M2: 実装済み・レビュー修正反映済み
-- M3-A: Decision Gate待ち
+- M0-A: 完了
+- M0-B: 完了
+- M1: 完了
+- M2: 完了
+- M3-A: 完了
+- M3-B: 完了
 
 未実装:
 
-- 3レーン
-- 本番Action Scheduler
-- 本番Deck循環
-- 復活
-- 進軍
-- ネクサス
 - SUPPORT
+- Counter / Follow-up / Interrupt
+- Trait Runtime
 - Instance
 - PvE
 - PvP
@@ -101,7 +98,7 @@ backend/
   src/lane_relay/
     api/          FastAPI entrypoint and routers
     domain/       Domain model placeholder
-    engine/       M1 BattleEngine
+    engine/       M3 BattleEngine
     data/         Master data loading placeholder
   tests/
 viewer/

@@ -1,7 +1,6 @@
 {
   "cards": [
     {
-      "consumes_action": true,
       "effects": [
         {
           "base_damage": 5,
@@ -19,7 +18,6 @@
       "rarity": "common"
     },
     {
-      "consumes_action": true,
       "effects": [
         {
           "base_damage": 12,
@@ -37,7 +35,6 @@
       "rarity": "common"
     },
     {
-      "consumes_action": true,
       "effects": [
         {
           "power": 1,
@@ -53,7 +50,6 @@
       "rarity": "common"
     },
     {
-      "consumes_action": true,
       "effects": [
         {
           "power": 3,
@@ -71,16 +67,10 @@
   ],
   "characters": [
     {
-      "base_stats": {
-        "ad": 8,
-        "ap": 0,
-        "ar": 2,
+      "action_resources": {
         "ds": 0,
-        "hp": 80,
-        "hrg": 0,
-        "mp": 10,
-        "mr": 1,
-        "mrg": 1
+        "hpr": 0,
+        "mpr": 1
       },
       "combat_stats": {
         "ad": 8,
@@ -91,19 +81,18 @@
       },
       "id": "character_enemy_001",
       "name": "ゴブリン",
+      "resources": {
+        "initial_mp": 10,
+        "max_hp": 80,
+        "max_mp": 10
+      },
       "trait_ids": []
     },
     {
-      "base_stats": {
-        "ad": 12,
-        "ap": 0,
-        "ar": 5,
+      "action_resources": {
         "ds": 10,
-        "hp": 120,
-        "hrg": 2,
-        "mp": 20,
-        "mr": 3,
-        "mrg": 8
+        "hpr": 2,
+        "mpr": 8
       },
       "combat_stats": {
         "ad": 12,
@@ -114,6 +103,11 @@
       },
       "id": "character_warrior_001",
       "name": "戦士",
+      "resources": {
+        "initial_mp": 20,
+        "max_hp": 120,
+        "max_mp": 20
+      },
       "trait_ids": [
         "trait_adjacent_splash"
       ]

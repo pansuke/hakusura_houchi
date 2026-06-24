@@ -116,6 +116,31 @@
           </article>
         </section>
 
+        <section v-if="laneStates.length" class="lane-map" aria-label="Lane positions">
+          <article v-for="lane in laneStates" :key="lane.laneId" class="lane-track">
+            <h3>{{ lane.laneId.toUpperCase() }}</h3>
+            <div class="lane-bar">
+              <span class="lane-nexus ally">味方Nexus</span>
+              <span
+                v-if="lane.ally?.alive"
+                class="lane-marker ally"
+                :style="{ left: `${lane.allyPositionPercent}%` }"
+                title="味方"
+              >●</span>
+              <span
+                v-if="lane.enemy?.alive"
+                class="lane-marker enemy"
+                :style="{ left: `${lane.enemyPositionPercent}%` }"
+                title="敵"
+              >○</span>
+              <span class="lane-nexus enemy">敵Nexus</span>
+            </div>
+            <p class="lane-meta">
+              味方 {{ lane.ally?.position ?? '-' }} / 敵 {{ lane.enemy?.position ?? '-' }}
+            </p>
+          </article>
+        </section>
+
         <section class="combatants">
           <ParticipantCard
             v-for="participant in participantList"
@@ -141,7 +166,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 
-import { simulateBattle } from './api/battleApi'
+import { fetchBattleRuleConfig, saveBattleRuleConfig, simulateBattle } from './api/battleApi'
 import ActionSummary from './components/ActionSummary.vue'
 import DebugEventList from './components/DebugEventList.vue'
 import InitialBattleState from './components/InitialBattleState.vue'
@@ -153,11 +178,10 @@ import { uiLabels } from './presentation/ja'
 import type { BattleReplay, BattleRuleConfig } from './types/battleReplay'
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
-const ruleConfigStorageKey = 'lane-relay-m3-rule-config'
 const defaultRuleConfig = m3Scenario.rule_config as BattleRuleConfig
 const replay = ref<BattleReplay | null>(null)
 const errorMessage = ref('')
-const editableRuleConfig = ref<BattleRuleConfig>(loadRuleConfig())
+const editableRuleConfig = ref<BattleRuleConfig>({ ...defaultRuleConfig })
 
 const {
   cursor,
@@ -206,6 +230,31 @@ const nexusStates = computed(() =>
   ),
 )
 
+const laneStates = computed(() => {
+  const participants = Object.values(currentSnapshot.value?.participants ?? {})
+  const config = currentSnapshot.value?.applied_rule_config ?? defaultRuleConfig
+  const range = config.enemy_nexus_position - config.ally_nexus_position
+  return ['top', 'mid', 'bot'].map((laneId) => {
+    const ally = participants.find(
+      (participant) => participant.lane_id === laneId && participant.side === 'ally',
+    )
+    const enemy = participants.find(
+      (participant) => participant.lane_id === laneId && participant.side === 'enemy',
+    )
+    const toPercent = (position: number | null | undefined) =>
+      position === null || position === undefined
+        ? 50
+        : ((position - config.ally_nexus_position) / range) * 100
+    return {
+      laneId,
+      ally,
+      enemy,
+      allyPositionPercent: toPercent(ally?.position),
+      enemyPositionPercent: toPercent(enemy?.position),
+    }
+  })
+})
+
 const currentEvents = computed(() =>
   (replay.value?.events ?? []).filter(
     (event) => event.action_index === currentSnapshot.value?.action_index,
@@ -227,27 +276,28 @@ async function loadReplay(): Promise<void> {
   }
 }
 
-function loadRuleConfig(): BattleRuleConfig {
-  if (typeof window === 'undefined') {
-    return { ...defaultRuleConfig }
-  }
-  const stored = window.localStorage.getItem(ruleConfigStorageKey)
-  if (!stored) {
-    return { ...defaultRuleConfig }
-  }
+async function loadRuleConfig(): Promise<void> {
   try {
-    return { ...defaultRuleConfig, ...JSON.parse(stored) } as BattleRuleConfig
+    editableRuleConfig.value = await fetchBattleRuleConfig(apiBaseUrl)
   } catch {
-    return { ...defaultRuleConfig }
+    editableRuleConfig.value = { ...defaultRuleConfig }
   }
 }
 
-function saveRuleConfig(): void {
-  window.localStorage.setItem(ruleConfigStorageKey, JSON.stringify(editableRuleConfig.value))
-  void loadReplay()
+async function saveRuleConfig(): Promise<void> {
+  errorMessage.value = ''
+  try {
+    editableRuleConfig.value = await saveBattleRuleConfig(apiBaseUrl, editableRuleConfig.value)
+    await loadReplay()
+  } catch {
+    errorMessage.value = uiLabels.loadFailed
+  }
 }
 
 onMounted(() => {
-  void loadReplay()
+  void (async () => {
+    await loadRuleConfig()
+    await loadReplay()
+  })()
 })
 </script>

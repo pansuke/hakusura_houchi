@@ -181,7 +181,6 @@ export const m3Scenario: BattleScenarioRequest = {
     },
   ],
   turn_order: ['top_ally', 'top_enemy', 'mid_ally', 'mid_enemy', 'bot_ally', 'bot_enemy'],
-  max_actions: 80,
   seed: 3,
   rule_config: {
     initial_hand_size: 3,
@@ -195,5 +194,8 @@ export const m3Scenario: BattleScenarioRequest = {
     nexus_ar: 0,
     nexus_mr: 0,
     defense_constant: 100,
+    minimum_damage: 1,
+    simulation_safety_limit: 80,
+    simulation_card_play_limit_per_action: 100,
   },
 }

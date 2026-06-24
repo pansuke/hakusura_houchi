@@ -95,7 +95,7 @@ describe('ActionSummary', () => {
     })
 
     expect(wrapper.text()).toContain('戦闘開始前')
-    expect(wrapper.text()).not.toContain('① 行動準備')
+    expect(wrapper.text()).not.toContain('① 復活・行動準備')
     expect(wrapper.text()).not.toContain('カード判定前です')
   })
 
@@ -128,11 +128,11 @@ describe('ActionSummary', () => {
     })
 
     expect(wrapper.text()).toContain('味方・戦士の行動')
-    expect(wrapper.text()).toContain('① 行動準備')
-    expect(wrapper.text()).toContain('② ドロー')
-    expect(wrapper.text()).toContain('③ カードアクション')
-    expect(wrapper.text()).toContain('④ 効果解決')
-    expect(wrapper.text()).toContain('⑤ 行動終了')
+    expect(wrapper.text()).toContain('① 復活・行動準備')
+    expect(wrapper.text()).toContain('③ ドロー')
+    expect(wrapper.text()).toContain('④ カードアクション')
+    expect(wrapper.text()).toContain('⑤ 効果解決')
+    expect(wrapper.text()).toContain('⑥ 行動終了')
     expect(wrapper.text()).toContain('MP回復：2 → 3（MPR +1）')
     expect(wrapper.text()).toContain('ドロー権を1回獲得')
     expect(wrapper.text()).toContain('「火球」を引いた')

@@ -1,0 +1,16 @@
+{
+  "initial_hand_size": 3,
+  "max_hand_size": 7,
+  "draw_gauge_threshold": 100,
+  "respawn_skip_turns": 3,
+  "ally_nexus_position": -1000,
+  "enemy_nexus_position": 1000,
+  "initial_position": 0,
+  "nexus_max_hp": 8000,
+  "nexus_ar": 0,
+  "nexus_mr": 0,
+  "defense_constant": 100,
+  "minimum_damage": 1,
+  "simulation_safety_limit": 1000,
+  "simulation_card_play_limit_per_action": 100
+}

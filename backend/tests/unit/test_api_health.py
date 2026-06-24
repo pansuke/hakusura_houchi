@@ -2,10 +2,11 @@
 テスト一覧:
 - health API は status=ok と service 名を返す
 - master-data status API は source と generated のパスを返す
-- battle prototype status API はM1/M2の準備状態を返す
+- battle prototype status API はM3の準備状態を返す
 - battle simulate API はReplayを返す
 - battle simulate API は不正Scenarioを422で返す
 - battle simulate API は不正なenum相当値を422で返す
+- dev battle-rule-config API はdefault取得・atomic保存・422検証を行う
 - battle simulate API のCORS preflightが成功する
 - battle simulate API はOpenAPI上でReplayレスポンスSchemaを持つ
 """
@@ -13,6 +14,7 @@
 from fastapi.testclient import TestClient
 
 from lane_relay.api.main import create_app
+from lane_relay.api.routers import dev
 
 
 def test_health_api_returns_ok_status() -> None:
@@ -42,7 +44,7 @@ def test_battle_prototype_status_api_marks_engine_as_ready() -> None:
     response = client.get("/api/v1/battles/prototype-status")
 
     assert response.status_code == 200
-    assert response.json()["engine"] == "m1_ready"
+    assert response.json()["engine"] == "m3_ready"
 
 
 def valid_battle_payload() -> dict[str, object]:
@@ -89,7 +91,7 @@ def valid_battle_payload() -> dict[str, object]:
             },
         ],
         "turn_order": ["ally_001", "enemy_001"],
-        "max_actions": 5,
+        "rule_config": {"simulation_safety_limit": 5},
         "seed": 1,
     }
 
@@ -155,6 +157,88 @@ def test_battle_simulate_api_returns_422_for_invalid_effect_type() -> None:
     participants[0]["deck"][0]["effects"][0]["effect_type"] = "poison"
 
     response = client.post("/api/v1/battles/simulate", json=payload)
+
+    assert response.status_code == 422
+
+
+def test_dev_battle_rule_config_returns_default_when_local_missing(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    default_path = tmp_path / "source" / "rules" / "battle_rule_default.json"
+    local_path = tmp_path / "local" / "battle_rule_config.json"
+    default_path.parent.mkdir(parents=True)
+    default_path.write_text(
+        """
+        {
+          "initial_hand_size": 3,
+          "max_hand_size": 7,
+          "draw_gauge_threshold": 100,
+          "respawn_skip_turns": 3,
+          "ally_nexus_position": -1000,
+          "enemy_nexus_position": 1000,
+          "initial_position": 0,
+          "nexus_max_hp": 8000,
+          "nexus_ar": 0,
+          "nexus_mr": 0,
+          "defense_constant": 100,
+          "minimum_damage": 1,
+          "simulation_safety_limit": 1000,
+          "simulation_card_play_limit_per_action": 100
+        }
+        """,
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(dev, "DEFAULT_RULE_CONFIG_PATH", default_path)
+    monkeypatch.setattr(dev, "LOCAL_RULE_CONFIG_PATH", local_path)
+    client = TestClient(create_app())
+
+    response = client.get("/api/v1/dev/battle-rule-config")
+
+    assert response.status_code == 200
+    assert response.json()["nexus_max_hp"] == 8000
+
+
+def test_dev_battle_rule_config_put_saves_atomically(tmp_path, monkeypatch) -> None:
+    default_path = tmp_path / "source" / "rules" / "battle_rule_default.json"
+    local_path = tmp_path / "local" / "battle_rule_config.json"
+    default_path.parent.mkdir(parents=True)
+    default_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(dev, "DEFAULT_RULE_CONFIG_PATH", default_path)
+    monkeypatch.setattr(dev, "LOCAL_RULE_CONFIG_PATH", local_path)
+    client = TestClient(create_app())
+    payload = {
+        "initial_hand_size": 3,
+        "max_hand_size": 7,
+        "draw_gauge_threshold": 100,
+        "respawn_skip_turns": 3,
+        "ally_nexus_position": -1000,
+        "enemy_nexus_position": 1000,
+        "initial_position": 0,
+        "nexus_max_hp": 9000,
+        "nexus_ar": 0,
+        "nexus_mr": 0,
+        "defense_constant": 100,
+        "minimum_damage": 1,
+        "simulation_safety_limit": 1000,
+        "simulation_card_play_limit_per_action": 100,
+    }
+
+    response = client.put("/api/v1/dev/battle-rule-config", json=payload)
+
+    assert response.status_code == 200
+    assert response.json()["nexus_max_hp"] == 9000
+    assert local_path.exists()
+    assert not local_path.with_suffix(".json.tmp").exists()
+
+
+def test_dev_battle_rule_config_rejects_invalid_values() -> None:
+    client = TestClient(create_app())
+
+    response = client.put(
+        "/api/v1/dev/battle-rule-config",
+        json={"initial_hand_size": 1, "max_hand_size": 0},
+    )
 
     assert response.status_code == 422
 

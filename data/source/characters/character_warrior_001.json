@@ -1,25 +1,24 @@
 {
   "id": "character_warrior_001",
   "name": "戦士",
-  "base_stats": {
-    "hp": 120,
-    "mp": 20,
-    "ad": 12,
-    "ap": 0,
-    "ar": 5,
-    "mr": 3,
-    "ds": 10,
-    "mrg": 8,
-    "hrg": 2
+  "resources": {
+    "max_hp": 120,
+    "max_mp": 20,
+    "initial_mp": 20
   },
-  "trait_ids": [
-    "trait_adjacent_splash"
-  ],
+  "action_resources": {
+    "ds": 10,
+    "mpr": 8,
+    "hpr": 2
+  },
   "combat_stats": {
     "ad": 12,
     "ap": 0,
     "ar": 5,
     "mr": 3,
     "push": 100
-  }
+  },
+  "trait_ids": [
+    "trait_adjacent_splash"
+  ]
 }

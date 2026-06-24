@@ -172,6 +172,77 @@ input {
   font-weight: 700;
 }
 
+.lane-map {
+  display: grid;
+  gap: 14px;
+}
+
+.lane-track {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(244, 241, 232, 0.14);
+  border-radius: 8px;
+  padding: 14px;
+  background: rgba(244, 241, 232, 0.05);
+}
+
+.lane-track h3,
+.lane-meta {
+  margin: 0;
+}
+
+.lane-track h3 {
+  color: #e1b45f;
+  font-size: 0.9rem;
+}
+
+.lane-bar {
+  position: relative;
+  height: 34px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #2d6245, #b59a47 50%, #74352e);
+}
+
+.lane-marker {
+  position: absolute;
+  top: 50%;
+  translate: -50% -50%;
+  font-size: 1.35rem;
+  font-weight: 900;
+  text-shadow: 0 0 8px #10150f;
+}
+
+.lane-marker.ally {
+  color: #8ee6a4;
+}
+
+.lane-marker.enemy {
+  color: #ff8d7c;
+}
+
+.lane-nexus {
+  position: absolute;
+  top: 50%;
+  translate: 0 -50%;
+  color: #10150f;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.lane-nexus.ally {
+  left: 10px;
+}
+
+.lane-nexus.enemy {
+  right: 10px;
+}
+
+.lane-meta {
+  color: #a7b6a4;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
 .rule-config-panel {
   border: 1px solid rgba(244, 241, 232, 0.16);
   border-radius: 8px;

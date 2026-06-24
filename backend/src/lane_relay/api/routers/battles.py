@@ -32,9 +32,12 @@ router = APIRouter(prefix="/battles", tags=["battles"])
 @router.get("/prototype-status", response_model=BattlePrototypeStatus)
 def get_battle_prototype_status() -> BattlePrototypeStatus:
     return BattlePrototypeStatus(
-        engine="m1_ready",
-        viewer_contract="m2_replay",
-        note="BattleEngine runs stateless M1 simulations and returns replay data.",
+        engine="m3_ready",
+        viewer_contract="m3_replay",
+        note=(
+            "BattleEngine supports three lanes, respawn, push, "
+            "scoped cards and Nexus combat."
+        ),
     )
 
 
@@ -74,16 +77,17 @@ def to_scenario(request: BattleSimulateRequest) -> BattleScenario:
                     BattleCard(
                         card_id=card.card_id,
                         mp_cost=card.mp_cost,
-                        consumes_action=card.consumes_action,
                         effects=[
                             BattleEffect(
                                 effect_type=cast(EffectType, effect.effect_type),
                                 target=cast(EffectTarget, effect.target),
                                 value=effect.value,
                                 scope=cast(EffectScope, effect.scope),
-                                damage_type=cast(DamageType, effect.damage_type),
+                                damage_type=cast(DamageType, effect.damage_type or "true"),
                                 base_damage=effect.base_damage,
-                                scaling=effect.scaling,
+                                scaling=[
+                                    scaling.model_dump() for scaling in effect.scaling
+                                ],
                             )
                             for effect in card.effects
                         ],
@@ -94,7 +98,6 @@ def to_scenario(request: BattleSimulateRequest) -> BattleScenario:
             for participant in request.participants
         ],
         turn_order=request.turn_order,
-        max_actions=request.max_actions,
         seed=request.seed,
         rule_config=BattleRuleConfig(
             initial_hand_size=request.rule_config.initial_hand_size,
@@ -108,6 +111,11 @@ def to_scenario(request: BattleSimulateRequest) -> BattleScenario:
             nexus_ar=request.rule_config.nexus_ar,
             nexus_mr=request.rule_config.nexus_mr,
             defense_constant=request.rule_config.defense_constant,
+            minimum_damage=request.rule_config.minimum_damage,
+            simulation_safety_limit=request.rule_config.simulation_safety_limit,
+            simulation_card_play_limit_per_action=(
+                request.rule_config.simulation_card_play_limit_per_action
+            ),
         ),
     )
 

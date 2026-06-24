@@ -11,6 +11,5 @@
       "scope": "local",
       "scaling": []
     }
-  ],
-  "consumes_action": true
+  ]
 }

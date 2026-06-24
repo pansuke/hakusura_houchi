@@ -52,6 +52,9 @@ export type BattleRuleConfig = {
   nexus_ar: number
   nexus_mr: number
   defense_constant: number
+  minimum_damage: number
+  simulation_safety_limit: number
+  simulation_card_play_limit_per_action: number
 }
 
 export type BattleSnapshot = {
@@ -82,7 +85,7 @@ export type DisplayCatalog = {
 }
 
 export type BattleEffectRequest = {
-  effect_type: 'damage' | 'heal' | 'gain_mana' | 'draw_card'
+  effect_type: 'damage' | 'heal' | 'gain_mana' | 'draw_card' | 'grant_card_play'
   target: 'self' | 'enemy'
   value: number
   scope?: 'local' | 'adjacent' | 'global'
@@ -95,7 +98,6 @@ export type BattleCardRequest = {
   card_id: string
   mp_cost: number
   effects: BattleEffectRequest[]
-  consumes_action?: boolean
 }
 
 export type BattleParticipantRequest = {
@@ -122,7 +124,6 @@ export type BattleScenarioRequest = {
   battle_id: string
   participants: BattleParticipantRequest[]
   turn_order: string[]
-  max_actions: number
   seed: number
   rule_config?: BattleRuleConfig
 }

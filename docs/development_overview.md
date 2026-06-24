@@ -29,7 +29,7 @@
 - ID 重複チェック
 - 参照整合性チェック
 
-現在は M0-A / M0-B 完了候補、M1 / M2 実装済みとして扱う。
+現在は M0-A / M0-B / M1 / M2 / M3-A / M3-B 完了として扱う。
 
 ### M1: 1対1BattleEngine
 
@@ -43,6 +43,14 @@
 
 - `POST /api/v1/battles/simulate`
 - 計算済みReplayのAction cursor表示
+
+### M3-A / M3-B: 3レーン・Nexus戦闘
+
+- TOP / MID / BOT の固定Scheduler
+- 本番Deck Runtime、復活、PUSH、位置、Local / Adjacent / Global
+- `grant_card_play`による同一Action内カード使用権
+- Nexus HP / Nexus攻撃 / Nexus破壊勝敗
+- `GET/PUT /api/v1/dev/battle-rule-config`
 - Action Pipelineによるフェーズ表示
 - 日本語名を優先した表示とDebug raw eventの分離
 - Action #0専用の初期状態表示
@@ -72,10 +80,14 @@
 
 ## 未実装
 
-- 3レーン戦闘
 - SUPPORT
-- 進軍 / ネクサス
+- Counter / Follow-up / Interrupt
+- Trait Runtime
+- Instance
+- PvE
+- PvP
 - Postgres 永続化
+- 認証 / 課金 / Steam連携
 - Playwright E2E
 
 ## Masterデータ基盤

@@ -3,7 +3,7 @@
   "$id": "https://lane-relay.local/schemas/character.schema.json",
   "title": "CharacterMaster",
   "type": "object",
-  "required": ["id", "name", "base_stats", "trait_ids"],
+  "required": ["id", "name", "resources", "action_resources", "combat_stats", "trait_ids"],
   "additionalProperties": false,
   "properties": {
     "id": {
@@ -14,20 +14,24 @@
       "type": "string",
       "minLength": 1
     },
-    "base_stats": {
+    "resources": {
       "type": "object",
-      "required": ["hp", "mp", "ad", "ap", "ar", "mr", "ds", "mrg", "hrg"],
+      "required": ["max_hp", "max_mp", "initial_mp"],
       "additionalProperties": false,
       "properties": {
-        "hp": { "type": "integer", "minimum": 1 },
-        "mp": { "type": "integer", "minimum": 0 },
-        "ad": { "type": "integer", "minimum": 0 },
-        "ap": { "type": "integer", "minimum": 0 },
-        "ar": { "type": "integer", "minimum": 0 },
-        "mr": { "type": "integer", "minimum": 0 },
+        "max_hp": { "type": "integer", "minimum": 1 },
+        "max_mp": { "type": "integer", "minimum": 0 },
+        "initial_mp": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "action_resources": {
+      "type": "object",
+      "required": ["ds", "mpr", "hpr"],
+      "additionalProperties": false,
+      "properties": {
         "ds": { "type": "integer", "minimum": 0 },
-        "mrg": { "type": "integer", "minimum": 0 },
-        "hrg": { "type": "integer", "minimum": 0 }
+        "mpr": { "type": "integer", "minimum": 0 },
+        "hpr": { "type": "integer", "minimum": 0 }
       }
     },
     "combat_stats": {

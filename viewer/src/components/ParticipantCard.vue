@@ -97,8 +97,9 @@ const props = defineProps<{
 
 const title = computed(() => participantTitle(props.participant, props.catalog))
 const targetKind = computed(() =>
-  props.primaryTarget?.participantId === props.participant.participant_id
-    ? props.primaryTarget.kind
+  props.primaryTarget?.kind === 'participant' &&
+  props.primaryTarget.participantId === props.participant.participant_id
+    ? props.primaryTarget.effectKind
     : null,
 )
 </script>

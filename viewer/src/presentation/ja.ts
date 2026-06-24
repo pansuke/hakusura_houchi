@@ -51,7 +51,7 @@ export function resultLabel(result: string, endReason: string): string {
     enemy_defeated: '敵を撃破',
     ally_defeated: '味方が戦闘不能',
     all_defeated: '双方戦闘不能',
-    max_actions: '最大行動数',
+    simulation_safety_limit: '最大行動数',
     no_actor: '行動者なし',
     running: '進行中',
   }

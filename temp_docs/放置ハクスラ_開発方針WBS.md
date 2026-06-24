@@ -154,7 +154,7 @@ Status: Done
 - Seed付きDeck shuffle / recycle
 - 初期手札3 / 最大手札7
 - 最古カード優先・手札上限時最古破棄
-- Card `consumes_action`
+- Effect `grant_card_play`
 - CharacterMaster Schema v2
 - AD / AP / AR / MR / PUSH
 - 本番Damage式
@@ -417,7 +417,7 @@ Ready
 ### D-1-4. deck
 ### D-1-5. initial_state
 ### D-1-6. turn_order
-### D-1-7. max_actions
+### D-1-7. simulation_safety_limit
 ### D-1-8. seed
 
 ## D-2. BattleState
@@ -544,7 +544,7 @@ Ready
 - [x] Gaugeが仕様通り
 - [x] 4Effectが動く
 - [x] 死亡・勝敗が動く
-- [x] Action #max_actions後に引き分け
+- [x] Action #simulation_safety_limit後に引き分け
 - [x] Event payloadが契約通り
 - [x] Summaryが生成される
 - [x] Event / Snapshot / Summaryが整合
@@ -683,7 +683,7 @@ Ready
 ### F-4-6. recycle shuffle
 ### F-4-7. oldest card only
 ### F-4-8. blocked oldest stops action
-### F-4-9. consumes_action
+### F-4-9. grant_card_play
 ### F-4-10. card chain safety error
 
 ## F-5. CharacterMaster / CardMaster v2
@@ -697,7 +697,7 @@ Ready
 ### F-5-7. Damage type
 ### F-5-8. base_damage
 ### F-5-9. scaling ratio_bp
-### F-5-10. consumes_action
+### F-5-10. grant_card_play
 
 ## F-6. Position / PUSH / Engagement
 
@@ -765,7 +765,7 @@ Ready
 - 初期手札3 / 最大7
 - overflow oldest discard
 - oldest card block
-- consumes_action true / false
+- grant_card_playによる追加カード使用権
 - 移動・cross clamp
 - PUSH差
 - 復活3回skip
@@ -824,7 +824,7 @@ Ready
 - [x] 最大手札Drawで最古カードをdiscardする
 - [x] draw pile枯渇時にdiscardをshuffleする
 - [x] 最古カード使用不能時に後続を探索しない
-- [x] consumes_actionが機能する
+- [x] grant_card_playが機能する
 - [x] 個別位置・移動・対面が機能する
 - [x] PUSH差で対面位置が移動する
 - [x] 3回の自分の行動機会を失った後に復活する
@@ -952,7 +952,7 @@ Done
 ## M3-B
 
 - 全滅勝敗をNexus勝敗へ置換
-- M1 max_actions drawを廃止
+- M1 simulation_safety_limit drawをM3本番勝敗から廃止
 - Local Nexus攻撃を追加
 
 ## M4-A

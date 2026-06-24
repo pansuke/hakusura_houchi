@@ -13,6 +13,5 @@
       "base_damage": 12,
       "scaling": []
     }
-  ],
-  "consumes_action": true
+  ]
 }

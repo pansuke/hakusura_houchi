@@ -8,7 +8,7 @@
   "properties": {
     "type": {
       "type": "string",
-      "enum": ["damage", "heal", "gain_mana", "draw_card"]
+      "enum": ["damage", "heal", "gain_mana", "draw_card", "grant_card_play"]
     },
     "target": {
       "type": "string",

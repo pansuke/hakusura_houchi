@@ -1,6 +1,6 @@
 /*
 テスト一覧:
-- 5フェーズが固定順で生成される
+- 6フェーズが固定順で生成される
 - HPR・MPR・DSが行動準備へ分類される
 - Draw Gaugeによるcard_drawnがドローへ分類される
 - Card Effectによるcard_drawnが効果解決へ分類される
@@ -89,7 +89,7 @@ function event(
 describe('battlePresenter', () => {
   test('renders Japanese result labels', () => {
     const replay = {
-      summary: { result: 'draw', end_reason: 'max_actions', action_count: 2 },
+      summary: { result: 'draw', end_reason: 'simulation_safety_limit', action_count: 2 },
     } as BattleReplay
 
     expect(visibleResultLabel(null, false)).toBe('読み込み中')
@@ -114,23 +114,32 @@ describe('battlePresenter', () => {
 
   test('chooses primary targets by priority', () => {
     expect(primaryTarget([event('character_defeated', {}, 'enemy_001', null)])).toEqual({
+      kind: 'participant',
       participantId: 'enemy_001',
-      kind: 'attack',
+      effectKind: 'attack',
     })
     expect(primaryTarget([event('damage_applied')])).toEqual({
+      kind: 'participant',
       participantId: 'enemy_001',
-      kind: 'attack',
+      effectKind: 'attack',
     })
     expect(
       primaryTarget([event('health_recovered', { reason: 'card_effect' }, 'ally_001', 'ally_001')]),
-    ).toEqual({ participantId: 'ally_001', kind: 'heal' })
+    ).toEqual({ kind: 'participant', participantId: 'ally_001', effectKind: 'heal' })
     expect(primaryTarget([event('mana_gained', {}, 'ally_001', null)])).toEqual({
+      kind: 'participant',
       participantId: 'ally_001',
-      kind: 'heal',
+      effectKind: 'heal',
     })
     expect(primaryTarget([event('card_used', { card_id: 'card_heal' })])).toEqual({
+      kind: 'participant',
       participantId: 'enemy_001',
-      kind: 'other',
+      effectKind: 'other',
+    })
+    expect(primaryTarget([event('nexus_damaged', {}, 'ally_001', 'enemy_nexus')])).toEqual({
+      kind: 'nexus',
+      side: 'enemy',
+      effectKind: 'attack',
     })
     expect(primaryTarget([event('mana_recovered', {}, 'ally_001', 'ally_001')])).toBeNull()
   })
@@ -165,6 +174,7 @@ describe('battlePresenter', () => {
 
     expect(phases.map((phase) => phase.id)).toEqual([
       'standby',
+      'movement',
       'draw',
       'card_action',
       'effect_result',
@@ -176,11 +186,11 @@ describe('battlePresenter', () => {
       'ドロー進捗：80 + 20 → 0',
       'ドロー権を1回獲得',
     ])
-    expect(phases[1].items.map((item) => item.label)).toContain('「精神集中」を引いた')
-    expect(phases[1].items.map((item) => item.label)).toContain('手札：3枚 → 4枚')
-    expect(phases[2].items.map((item) => item.label)).toContain('「治癒」を選択')
-    expect(phases[3].items.map((item) => item.label)).toContain('カード効果で「精神集中」を引いた')
-    expect(phases[4].items.map((item) => item.label)).toContain('次の行動：ゴブリン')
+    expect(phases[2].items.map((item) => item.label)).toContain('「精神集中」を引いた')
+    expect(phases[2].items.map((item) => item.label)).toContain('手札：3枚 → 4枚')
+    expect(phases[3].items.map((item) => item.label)).toContain('1枚目：「治癒」を選択')
+    expect(phases[4].items.map((item) => item.label)).toContain('カード効果で「精神集中」を引いた')
+    expect(phases[5].items.map((item) => item.label)).toContain('次の行動：ゴブリン')
   })
 
   test('separates blocked draw by draw source', () => {
@@ -197,11 +207,11 @@ describe('battlePresenter', () => {
       ],
       catalog,
     )
-    expect(gaugeBlocked[1].items.map((item) => item.label)).toContain(
+    expect(gaugeBlocked[2].items.map((item) => item.label)).toContain(
       '手札上限のためカードを引けませんでした',
     )
-    expect(gaugeBlocked[1].items.map((item) => item.label)).toContain('手札：5 / 5')
-    expect(gaugeBlocked[3].items.map((item) => item.label)).not.toContain(
+    expect(gaugeBlocked[2].items.map((item) => item.label)).toContain('手札：5 / 5')
+    expect(gaugeBlocked[4].items.map((item) => item.label)).not.toContain(
       '手札上限のためカードを引けませんでした',
     )
 
@@ -218,7 +228,7 @@ describe('battlePresenter', () => {
       ],
       catalog,
     )
-    expect(gaugeEmpty[1].items.map((item) => item.label)).toContain(
+    expect(gaugeEmpty[2].items.map((item) => item.label)).toContain(
       '引けるカードがありませんでした',
     )
 
@@ -234,16 +244,16 @@ describe('battlePresenter', () => {
       ],
       catalog,
     )
-    expect(effectEmpty[1].items.map((item) => item.label)).not.toContain(
+    expect(effectEmpty[2].items.map((item) => item.label)).not.toContain(
       '引けるカードがありませんでした',
     )
-    expect(effectEmpty[3].items.map((item) => item.label)).toContain(
+    expect(effectEmpty[4].items.map((item) => item.label)).toContain(
       'カードを1枚引く効果を処理',
     )
-    expect(effectEmpty[3].items.map((item) => item.label)).toContain(
+    expect(effectEmpty[4].items.map((item) => item.label)).toContain(
       '引けるカードがありませんでした',
     )
-    expect(effectEmpty[3].items.map((item) => item.label)).toContain('手札：1枚')
+    expect(effectEmpty[4].items.map((item) => item.label)).toContain('手札：1枚')
 
     const effectHandFull = buildActionPhases(
       snapshot,
@@ -257,10 +267,10 @@ describe('battlePresenter', () => {
       ],
       catalog,
     )
-    expect(effectHandFull[3].items.map((item) => item.label)).toContain(
+    expect(effectHandFull[4].items.map((item) => item.label)).toContain(
       '手札上限のためカードを引けませんでした',
     )
-    expect(effectHandFull[3].items.map((item) => item.label)).toContain('手札：5 / 5')
+    expect(effectHandFull[4].items.map((item) => item.label)).toContain('手札：5 / 5')
   })
 
   test('does not silently render missing required payload as zero', () => {
@@ -275,21 +285,21 @@ describe('battlePresenter', () => {
       [event('gauge_changed', { before: 20, gain: 20, trigger_count: 0, after: 40 })],
       catalog,
     )
-    expect(noDraw[1].status).toBe('skipped')
-    expect(noDraw[1].items.map((item) => item.label)).toContain('ドロー権は発生しませんでした')
+    expect(noDraw[2].status).toBe('skipped')
+    expect(noDraw[2].items.map((item) => item.label)).toContain('ドロー権は発生しませんでした')
     expect(noDraw[0].items.map((item) => item.label)).not.toContain('ドロー権は発生しませんでした')
 
     const emptyHand = buildActionPhases({ ...snapshot, participants: { ally_001: participant('ally_001', 'ally') } }, [], catalog)
-    expect(emptyHand[2].items.map((item) => item.label)).toContain('手札にカードがありませんでした')
+    expect(emptyHand[3].items.map((item) => item.label)).toContain('手札にカードがありませんでした')
 
     const unusable = buildActionPhases(
       snapshot,
       [event('card_held', { card_id: 'card_heal', reason: 'insufficient_mana', required_mp: 3, current_mp: 2 })],
       catalog,
     )
-    expect(unusable[2].status).toBe('warning')
-    expect(unusable[2].items.map((item) => item.label)).toContain('治癒：使用不可：MP不足')
-    expect(unusable[2].items.map((item) => item.detail)).toContain('必要MP：3 / 現在MP：2')
+    expect(unusable[3].status).toBe('warning')
+    expect(unusable[3].items.map((item) => item.label)).toContain('治癒：使用不可：MP不足')
+    expect(unusable[3].items.map((item) => item.detail)).toContain('必要MP：3 / 現在MP：2')
   })
 
   test('renders damage and battle completion without next actor', () => {
@@ -303,13 +313,46 @@ describe('battlePresenter', () => {
       catalog,
     )
 
-    expect(phases[3].items.map((item) => item.label)).toContain(
+    expect(phases[4].items.map((item) => item.label)).toContain(
       '敵・ゴブリンに20ダメージを試行 / 実ダメージ：4',
     )
-    expect(phases[3].items.map((item) => item.label)).toContain('ゴブリンは戦闘不能になりました')
-    expect(phases[4].items.map((item) => item.label)).toEqual([
+    expect(phases[4].items.map((item) => item.label)).toContain('ゴブリンは戦闘不能になりました')
+    expect(phases[5].items.map((item) => item.label)).toEqual([
       '敵チームが全滅しました',
       '結果：味方チームの勝利',
     ])
+  })
+
+  test('renders M3 movement, respawn, grant and nexus events', () => {
+    const phases = buildActionPhases(
+      snapshot,
+      [
+        event('respawn_waited', { before: 2, after: 1 }, 'enemy_001', null),
+        { ...event('lane_moved', { before: -1000, after: -950, mode: 'unopposed' }), lane_id: 'mid' },
+        event('engagement_started', { position: -950 }),
+        event('gauge_changed', { before: 80, gain: 20, trigger_count: 1, after: 0 }, 'ally_001', null),
+        event('discard_recycled', { shuffle_count: 2 }, 'ally_001', null),
+        event('card_overflow_discarded', { card_id: 'card_heal', hand_limit: 7 }, 'ally_001', null),
+        event('card_used', { card_id: 'card_focus', card_play_index: 1 }, 'ally_001', 'ally_001'),
+        event(
+          'grant_card_play',
+          { amount: 1, remaining_card_plays: 1, card_play_index: 1 },
+          'ally_001',
+          'ally_001',
+        ),
+        event('nexus_damaged', { before: 8000, requested: 20, applied: 20, after: 7980 }, 'ally_001', 'enemy_nexus'),
+        event('nexus_destroyed', { side: 'enemy' }, 'ally_001', 'enemy_nexus'),
+      ],
+      catalog,
+    )
+
+    expect(phases[0].items.map((item) => item.label)).toContain('復活まで残り：1回')
+    expect(phases[1].items.map((item) => item.label)).toContain('MIDレーン 前進：-1000 → -950')
+    expect(phases[1].items.map((item) => item.label)).toContain('対面開始：位置 -950')
+    expect(phases[2].items.map((item) => item.label)).toContain('捨て札をシャッフルして山札を再構築')
+    expect(phases[2].items.map((item) => item.label)).toContain('手札上限7枚：最古の「治癒」を捨てた')
+    expect(phases[3].items.map((item) => item.label)).toContain('追加カード使用権：+1')
+    expect(phases[4].items.map((item) => item.label)).toContain('敵Nexusに20ダメージ')
+    expect(phases[4].items.map((item) => item.label)).toContain('敵Nexusを破壊しました')
   })
 })

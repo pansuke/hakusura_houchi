@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass, field
+from hashlib import sha256
 from typing import Literal
 
 Side = Literal["ally", "enemy"]
 BattleStatus = Literal["running", "completed"]
 BattleResult = Literal["undecided", "ally_win", "ally_loss", "draw"]
-EffectType = Literal["damage", "heal", "gain_mana", "draw_card"]
+EffectType = Literal["damage", "heal", "gain_mana", "draw_card", "grant_card_play"]
 EffectTarget = Literal["self", "enemy"]
 LaneId = Literal["top", "mid", "bot"]
 DamageType = Literal["physical", "magic", "true"]
@@ -25,7 +26,13 @@ M3_TURN_SLOTS: tuple[tuple[LaneId, Side], ...] = (
     ("bot", "ally"),
     ("bot", "enemy"),
 )
-ALLOWED_EFFECT_TYPES: set[str] = {"damage", "heal", "gain_mana", "draw_card"}
+ALLOWED_EFFECT_TYPES: set[str] = {
+    "damage",
+    "heal",
+    "gain_mana",
+    "draw_card",
+    "grant_card_play",
+}
 ALLOWED_EFFECT_TARGETS: set[str] = {"self", "enemy"}
 ALLOWED_EFFECT_SCOPES: set[str] = {"local", "adjacent", "global"}
 ALLOWED_DAMAGE_TYPES: set[str] = {"physical", "magic", "true"}
@@ -51,7 +58,6 @@ class BattleCard:
     card_id: str
     mp_cost: int
     effects: list[BattleEffect]
-    consumes_action: bool = True
 
 
 @dataclass(frozen=True)
@@ -88,6 +94,9 @@ class BattleRuleConfig:
     nexus_ar: int = 0
     nexus_mr: int = 0
     defense_constant: int = 100
+    minimum_damage: int = 1
+    simulation_safety_limit: int = 1000
+    simulation_card_play_limit_per_action: int = 100
 
 
 @dataclass(frozen=True)
@@ -95,7 +104,6 @@ class BattleScenario:
     battle_id: str
     participants: list[BattleParticipantSetup]
     turn_order: list[str]
-    max_actions: int = 1000
     seed: int = 0
     rule_config: BattleRuleConfig = field(default_factory=BattleRuleConfig)
 
@@ -208,6 +216,9 @@ class ParticipantRuntime:
     engaged_with_participant_id: str | None = None
     respawn_turns_remaining: int | None = None
     shuffle_count: int = 0
+    initial_shuffle_count: int = 0
+    recycle_shuffle_count: int = 0
+    respawn_shuffle_count: int = 0
 
 
 @dataclass
@@ -221,6 +232,7 @@ class BattleRuntime:
     end_reason: str = "running"
     nexus_states: dict[str, NexusSnapshot] = field(default_factory=dict)
     rule_config: BattleRuleConfig | None = None
+    adjacent_selection_count: int = 0
 
 
 class EventRecorder:
@@ -270,8 +282,8 @@ class BattleEngine:
         )
 
         while runtime.battle_status == "running":
-            if runtime.action_index >= scenario.max_actions:
-                self._complete_battle(runtime, recorder, "draw", "max_actions")
+            if runtime.action_index >= scenario.rule_config.simulation_safety_limit:
+                self._complete_battle(runtime, recorder, "draw", "simulation_safety_limit")
                 snapshots.append(self._snapshot(runtime, acted_actor_id=None))
                 break
             actor_id = self._active_actor_id(runtime)
@@ -299,8 +311,10 @@ class BattleEngine:
         )
 
     def _validate_scenario(self, scenario: BattleScenario) -> None:
-        if scenario.max_actions < 1:
-            raise BattleScenarioError("max_actions must be greater than or equal to 1.")
+        if scenario.rule_config.simulation_safety_limit < 1:
+            raise BattleScenarioError(
+                "simulation_safety_limit must be greater than or equal to 1."
+            )
         if self._is_m3_scenario(scenario):
             self._validate_m3_scenario(scenario)
             return
@@ -355,6 +369,7 @@ class BattleEngine:
                         raise BattleScenarioError(
                             "base_damage must be greater than or equal to 0."
                         )
+                    self._validate_effect_specific_fields(effect)
 
     def _validate_m3_scenario(self, scenario: BattleScenario) -> None:
         if len(scenario.participants) != 6:
@@ -378,7 +393,11 @@ class BattleEngine:
                 "mid ally, mid enemy, bot ally, bot enemy."
             )
         config = scenario.rule_config
-        if config.initial_hand_size < 0 or config.max_hand_size < config.initial_hand_size:
+        if (
+            config.initial_hand_size < 0
+            or config.max_hand_size < 1
+            or config.max_hand_size < config.initial_hand_size
+        ):
             raise BattleScenarioError("invalid hand size rule config.")
         if config.draw_gauge_threshold < 1:
             raise BattleScenarioError("draw_gauge_threshold must be greater than 0.")
@@ -388,6 +407,20 @@ class BattleEngine:
             raise BattleScenarioError("nexus_max_hp must be greater than 0.")
         if config.defense_constant < 1:
             raise BattleScenarioError("defense_constant must be greater than 0.")
+        if config.minimum_damage < 1:
+            raise BattleScenarioError("minimum_damage must be greater than 0.")
+        if config.simulation_safety_limit < 1:
+            raise BattleScenarioError("simulation_safety_limit must be greater than 0.")
+        if config.simulation_card_play_limit_per_action < 1:
+            raise BattleScenarioError(
+                "simulation_card_play_limit_per_action must be greater than 0."
+            )
+        if not (
+            config.ally_nexus_position
+            < config.initial_position
+            < config.enemy_nexus_position
+        ):
+            raise BattleScenarioError("nexus positions must contain initial_position.")
         for participant in scenario.participants:
             if not participant.deck:
                 raise BattleScenarioError("deck must not be empty.")
@@ -431,6 +464,25 @@ class BattleEngine:
                         )
                     if effect.target == "self" and effect.scope != "local":
                         raise BattleScenarioError("self target effects must use local scope.")
+                    self._validate_effect_specific_fields(effect)
+
+    def _validate_effect_specific_fields(self, effect: BattleEffect) -> None:
+        allowed_scaling_stats = {"ad", "ap", "max_hp", "current_hp", "missing_hp"}
+        if len(effect.scaling) > 8:
+            raise BattleScenarioError("scaling must contain at most 8 entries.")
+        for scaling in effect.scaling:
+            if scaling.get("stat") not in allowed_scaling_stats:
+                raise BattleScenarioError("scaling stat must be supported.")
+            if scaling.get("ratio_bp", 0) < 0:
+                raise BattleScenarioError("scaling ratio_bp must be greater than or equal to 0.")
+        if effect.effect_type == "damage":
+            return
+        if effect.base_damage is not None:
+            raise BattleScenarioError("base_damage is only allowed for damage effects.")
+        if effect.damage_type != "true":
+            raise BattleScenarioError("damage_type is only allowed for damage effects.")
+        if effect.scaling:
+            raise BattleScenarioError("scaling is only allowed for damage effects.")
 
     def _simulate_m3(self, scenario: BattleScenario) -> BattleReplay:
         self._validate_m3_scenario(scenario)
@@ -448,7 +500,7 @@ class BattleEngine:
         )
 
         while runtime.battle_status == "running":
-            if runtime.action_index >= scenario.max_actions:
+            if runtime.action_index >= scenario.rule_config.simulation_safety_limit:
                 raise BattleScenarioError("simulation_safety_limit reached.")
             actor_id = scenario.turn_order[runtime.current_turn_index]
             runtime.action_index += 1
@@ -479,6 +531,11 @@ class BattleEngine:
             "nexus_ar": config.nexus_ar,
             "nexus_mr": config.nexus_mr,
             "defense_constant": config.defense_constant,
+            "minimum_damage": config.minimum_damage,
+            "simulation_safety_limit": config.simulation_safety_limit,
+            "simulation_card_play_limit_per_action": (
+                config.simulation_card_play_limit_per_action
+            ),
         }
 
     def _create_m3_runtime(self, scenario: BattleScenario) -> BattleRuntime:
@@ -495,7 +552,12 @@ class BattleEngine:
                 engaged_with_participant_id=None,
                 respawn_turns_remaining=None,
             )
-            self._initialize_m3_deck(runtime, scenario.seed, config)
+            self._initialize_m3_deck(
+                runtime,
+                scenario.seed,
+                config,
+                stream_name="deck_initial_shuffle",
+            )
             participants[setup.participant_id] = runtime
         runtime = BattleRuntime(
             scenario=scenario,
@@ -530,17 +592,34 @@ class BattleEngine:
         participant: ParticipantRuntime,
         seed: int,
         config: BattleRuleConfig,
+        stream_name: str,
     ) -> None:
         cards = list(participant.setup.deck)
-        rng = random.Random(
-            f"{seed}:deck:{participant.setup.participant_id}:{participant.shuffle_count}"
-        )
+        if stream_name == "deck_initial_shuffle":
+            stream_count = participant.initial_shuffle_count
+            participant.initial_shuffle_count += 1
+        elif stream_name == "deck_respawn_shuffle":
+            stream_count = participant.respawn_shuffle_count
+            participant.respawn_shuffle_count += 1
+        else:
+            raise BattleScenarioError("unsupported deck shuffle stream.")
+        rng = self._rng(seed, stream_name, participant.setup.participant_id, stream_count)
         rng.shuffle(cards)
         participant.hand = cards[: config.initial_hand_size]
         participant.draw_pile = cards[config.initial_hand_size :]
         participant.discard_pile = []
         participant.draw_gauge = 0
         participant.shuffle_count += 1
+
+    def _rng(
+        self,
+        battle_seed: int,
+        stream_name: str,
+        key: str,
+        stream_count: int,
+    ) -> random.Random:
+        digest = sha256(f"{battle_seed}:{stream_name}:{key}:{stream_count}".encode()).hexdigest()
+        return random.Random(digest)
 
     def _run_m3_action(
         self,
@@ -629,7 +708,12 @@ class BattleEngine:
         )
         actor.engaged_with_participant_id = None
         actor.respawn_turns_remaining = None
-        self._initialize_m3_deck(actor, runtime.scenario.seed, config)
+        self._initialize_m3_deck(
+            actor,
+            runtime.scenario.seed,
+            config,
+            stream_name="deck_respawn_shuffle",
+        )
         recorder.record(
             runtime.action_index,
             "deck_shuffled",
@@ -789,12 +873,16 @@ class BattleEngine:
     ) -> None:
         config = runtime.scenario.rule_config
         if not participant.draw_pile and participant.discard_pile:
-            rng = random.Random(
-                f"{runtime.scenario.seed}:recycle:{participant.setup.participant_id}:{participant.shuffle_count}"
+            rng = self._rng(
+                runtime.scenario.seed,
+                "deck_recycle_shuffle",
+                participant.setup.participant_id,
+                participant.recycle_shuffle_count,
             )
             participant.draw_pile = list(participant.discard_pile)
             rng.shuffle(participant.draw_pile)
             participant.discard_pile.clear()
+            participant.recycle_shuffle_count += 1
             participant.shuffle_count += 1
             recorder.record(
                 runtime.action_index,
@@ -849,7 +937,13 @@ class BattleEngine:
         recorder: EventRecorder,
         actor: ParticipantRuntime,
     ) -> None:
-        while actor.hand and runtime.battle_status == "running":
+        remaining_card_plays = 1
+        card_play_count = 0
+        while (
+            remaining_card_plays > 0
+            and actor.hand
+            and runtime.battle_status == "running"
+        ):
             card = actor.hand[0]
             targets = self._m3_targets_for_card(runtime, recorder, actor, card)
             playable = bool(targets) and actor.mp >= card.mp_cost
@@ -865,6 +959,7 @@ class BattleEngine:
                     "required_mp": card.mp_cost,
                     "current_mp": actor.mp,
                     "playable": playable,
+                    "remaining_card_plays": remaining_card_plays,
                 },
             )
             if not playable:
@@ -880,12 +975,23 @@ class BattleEngine:
                         "reason": reason,
                         "required_mp": card.mp_cost,
                         "current_mp": actor.mp,
+                        "remaining_card_plays": remaining_card_plays,
                     },
                 )
                 return
-            self._use_m3_card(runtime, recorder, actor, card, targets)
-            if card.consumes_action:
-                return
+            remaining_card_plays -= 1
+            card_play_count += 1
+            if card_play_count > runtime.scenario.rule_config.simulation_card_play_limit_per_action:
+                raise BattleScenarioError("card_play_safety_limit reached.")
+            remaining_card_plays += self._use_m3_card(
+                runtime,
+                recorder,
+                actor,
+                card,
+                targets,
+                card_play_index=card_play_count,
+                remaining_card_plays=remaining_card_plays,
+            )
 
     def _use_m3_card(
         self,
@@ -894,7 +1000,10 @@ class BattleEngine:
         actor: ParticipantRuntime,
         card: BattleCard,
         targets: list[ParticipantRuntime | str],
-    ) -> None:
+        card_play_index: int,
+        remaining_card_plays: int,
+    ) -> int:
+        granted_card_plays = 0
         actor.hand.pop(0)
         actor.cards_used += 1
         if card.mp_cost:
@@ -907,6 +1016,7 @@ class BattleEngine:
                 lane_id=actor.lane_id,
                 payload={
                     "card_id": card.card_id,
+                    "card_play_index": card_play_index,
                     "before": before_mp,
                     "amount": card.mp_cost,
                     "after": actor.mp,
@@ -918,17 +1028,30 @@ class BattleEngine:
             actor_id=actor.setup.participant_id,
             target_id=self._target_id_for_payload(targets[0]) if targets else None,
             lane_id=actor.lane_id,
-            payload={"card_id": card.card_id, "consumes_action": card.consumes_action},
+            payload={
+                "card_id": card.card_id,
+                "card_play_index": card_play_index,
+                "remaining_card_plays": remaining_card_plays,
+            },
         )
         for effect in card.effects:
             effect_targets = self._m3_targets_for_effect(runtime, recorder, actor, effect)
             for target in effect_targets:
-                self._resolve_m3_effect(runtime, recorder, actor, target, effect)
+                granted_card_plays += self._resolve_m3_effect(
+                    runtime,
+                    recorder,
+                    actor,
+                    target,
+                    effect,
+                    card_play_index=card_play_index,
+                    remaining_card_plays=remaining_card_plays + granted_card_plays,
+                )
                 if runtime.battle_status == "completed":
                     break
             if runtime.battle_status == "completed":
                 break
         actor.discard_pile.append(card)
+        return granted_card_plays
 
     def _resolve_m3_effect(
         self,
@@ -937,7 +1060,9 @@ class BattleEngine:
         actor: ParticipantRuntime,
         target: ParticipantRuntime | str,
         effect: BattleEffect,
-    ) -> None:
+        card_play_index: int,
+        remaining_card_plays: int,
+    ) -> int:
         if effect.effect_type == "damage":
             self._damage_m3(runtime, recorder, actor, target, effect)
         elif isinstance(target, ParticipantRuntime) and effect.effect_type == "heal":
@@ -947,6 +1072,21 @@ class BattleEngine:
         elif isinstance(target, ParticipantRuntime) and effect.effect_type == "draw_card":
             for _draw_index in range(effect.value):
                 self._draw_one_m3(runtime, recorder, target, draw_source="card_effect")
+        elif isinstance(target, ParticipantRuntime) and effect.effect_type == "grant_card_play":
+            recorder.record(
+                runtime.action_index,
+                "grant_card_play",
+                actor_id=actor.setup.participant_id,
+                target_id=target.setup.participant_id,
+                lane_id=actor.lane_id,
+                payload={
+                    "amount": effect.value,
+                    "remaining_card_plays": remaining_card_plays + effect.value,
+                    "card_play_index": card_play_index,
+                },
+            )
+            return effect.value
+        return 0
 
     def _damage_m3(
         self,
@@ -1043,7 +1183,7 @@ class BattleEngine:
             final = raw_bp * config.defense_constant // (
                 10000 * (config.defense_constant + defense)
             )
-        return max(1, final) if raw_bp > 0 else 0
+        return max(config.minimum_damage, final)
 
     def _m3_stat_value(self, actor: ParticipantRuntime, stat: str) -> int:
         if stat == "ad":
@@ -1152,7 +1292,13 @@ class BattleEngine:
             and participant.alive
         ]
         if lane_id == "mid" and len(candidates) > 1:
-            rng = random.Random(f"{runtime.scenario.seed}:adjacent:{runtime.action_index}")
+            rng = self._rng(
+                runtime.scenario.seed,
+                "adjacent_target_selection",
+                actor.setup.participant_id,
+                runtime.adjacent_selection_count,
+            )
+            runtime.adjacent_selection_count += 1
             return [rng.choice(candidates)]
         return candidates
 
@@ -1626,8 +1772,8 @@ class BattleEngine:
             return "ally_win", "enemy_defeated"
         if not ally_alive:
             return "ally_loss", "ally_defeated"
-        if runtime.action_index >= runtime.scenario.max_actions:
-            return "draw", "max_actions"
+        if runtime.action_index >= runtime.scenario.rule_config.simulation_safety_limit:
+            return "draw", "simulation_safety_limit"
         return None
 
     def _complete_battle(

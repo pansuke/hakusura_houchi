@@ -190,6 +190,23 @@ const replay: BattleReplay = {
   },
 }
 
+const ruleConfig = {
+  initial_hand_size: 3,
+  max_hand_size: 7,
+  draw_gauge_threshold: 100,
+  respawn_skip_turns: 3,
+  ally_nexus_position: -1000,
+  enemy_nexus_position: 1000,
+  initial_position: 0,
+  nexus_max_hp: 8000,
+  nexus_ar: 0,
+  nexus_mr: 0,
+  defense_constant: 100,
+  minimum_damage: 1,
+  simulation_safety_limit: 1000,
+  simulation_card_play_limit_per_action: 100,
+}
+
 function participant(
   participantId: string,
   side: string,
@@ -227,10 +244,13 @@ afterEach(() => {
 async function mountLoadedApp() {
   vi.stubGlobal(
     'fetch',
-    vi.fn(async () => ({
-      ok: true,
-      json: async () => replay,
-    })),
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      return {
+        ok: true,
+        json: async () => (url.includes('/api/v1/dev/') ? ruleConfig : replay),
+      }
+    }),
   )
   const wrapper = mount(App)
   await vi.waitFor(() => {
@@ -251,7 +271,7 @@ describe('App', () => {
     expect(wrapper.text()).toContain('最初の行動者：戦士')
     expect(wrapper.text()).toContain('味方・戦士 初期手札')
     expect(wrapper.text()).toContain('火球')
-    expect(wrapper.text()).not.toContain('① 行動準備')
+    expect(wrapper.text()).not.toContain('① 復活・行動準備')
     expect(wrapper.text()).toContain('味方・戦士')
     expect(wrapper.text()).toContain('敵・ゴブリン')
 
@@ -362,7 +382,7 @@ describe('App', () => {
     await vi.runOnlyPendingTimersAsync()
 
     expect(wrapper.find('.result-badge').text()).toBe('勝利 / 敵を撃破')
-    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(fetch).toHaveBeenCalledTimes(2)
     wrapper.unmount()
   })
 
@@ -430,9 +450,9 @@ describe('App', () => {
     await vi.runOnlyPendingTimersAsync()
 
     expect(wrapper.find('.action-summary').text()).toContain('味方・戦士の行動')
-    expect(wrapper.find('.action-summary').text()).toContain('① 行動準備')
-    expect(wrapper.find('.action-summary').text()).toContain('② ドロー')
-    expect(wrapper.find('.action-summary').text()).toContain('③ カードアクション')
+    expect(wrapper.find('.action-summary').text()).toContain('① 復活・行動準備')
+    expect(wrapper.find('.action-summary').text()).toContain('③ ドロー')
+    expect(wrapper.find('.action-summary').text()).toContain('④ カードアクション')
     expect(wrapper.find('.action-summary').text()).toContain('ドロー権を1回獲得')
     expect(wrapper.find('.action-summary').text()).toContain('「火球」を引いた')
     expect(wrapper.find('.action-summary').text()).toContain('「火球」を選択')

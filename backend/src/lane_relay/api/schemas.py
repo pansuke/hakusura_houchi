@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ApiSchema(BaseModel):
@@ -23,21 +23,38 @@ class MasterDataStatus(ApiSchema):
     generated_file: str
 
 
+class DamageScalingRequest(ApiSchema):
+    stat: Literal["ad", "ap", "max_hp", "current_hp", "missing_hp"]
+    ratio_bp: int = Field(ge=0)
+
+
 class BattleEffectRequest(ApiSchema):
-    effect_type: Literal["damage", "heal", "gain_mana", "draw_card"]
+    effect_type: Literal["damage", "heal", "gain_mana", "draw_card", "grant_card_play"]
     target: Literal["self", "enemy"]
     value: int = Field(ge=1)
     scope: Literal["local", "adjacent", "global"] = "local"
-    damage_type: Literal["physical", "magic", "true"] = "true"
+    damage_type: Literal["physical", "magic", "true"] | None = None
     base_damage: int | None = Field(default=None, ge=0)
-    scaling: list[dict[str, int]] = Field(default_factory=list)
+    scaling: list[DamageScalingRequest] = Field(default_factory=list, max_length=8)
+
+    @model_validator(mode="after")
+    def validate_damage_fields(self) -> "BattleEffectRequest":
+        if self.effect_type == "damage":
+            return self
+        provided_fields = self.model_fields_set
+        if "base_damage" in provided_fields:
+            raise ValueError("base_damage is only allowed for damage effects")
+        if "damage_type" in provided_fields:
+            raise ValueError("damage_type is only allowed for damage effects")
+        if self.scaling:
+            raise ValueError("scaling is only allowed for damage effects")
+        return self
 
 
 class BattleCardRequest(ApiSchema):
     card_id: str
     mp_cost: int = Field(ge=0)
     effects: list[BattleEffectRequest]
-    consumes_action: bool = True
 
 
 class BattleParticipantRequest(ApiSchema):
@@ -62,7 +79,7 @@ class BattleParticipantRequest(ApiSchema):
 
 class BattleRuleConfigRequest(ApiSchema):
     initial_hand_size: int = Field(default=3, ge=0)
-    max_hand_size: int = Field(default=7, ge=0)
+    max_hand_size: int = Field(default=7, ge=1)
     draw_gauge_threshold: int = Field(default=100, ge=1)
     respawn_skip_turns: int = Field(default=3, ge=0)
     ally_nexus_position: int = -1000
@@ -72,13 +89,23 @@ class BattleRuleConfigRequest(ApiSchema):
     nexus_ar: int = Field(default=0, ge=0)
     nexus_mr: int = Field(default=0, ge=0)
     defense_constant: int = Field(default=100, ge=1)
+    minimum_damage: int = Field(default=1, ge=1)
+    simulation_safety_limit: int = Field(default=1000, ge=1, le=100000)
+    simulation_card_play_limit_per_action: int = Field(default=100, ge=1, le=10000)
+
+    @model_validator(mode="after")
+    def validate_rule_config(self) -> "BattleRuleConfigRequest":
+        if self.initial_hand_size > self.max_hand_size:
+            raise ValueError("initial_hand_size must be less than or equal to max_hand_size")
+        if not self.ally_nexus_position < self.initial_position < self.enemy_nexus_position:
+            raise ValueError("nexus positions must contain initial_position")
+        return self
 
 
 class BattleSimulateRequest(ApiSchema):
     battle_id: str
     participants: list[BattleParticipantRequest]
     turn_order: list[str]
-    max_actions: int = Field(default=1000, ge=1, le=100000)
     seed: int = 0
     rule_config: BattleRuleConfigRequest = Field(default_factory=BattleRuleConfigRequest)
 
@@ -137,6 +164,9 @@ class BattleRuleConfigResponse(ApiSchema):
     nexus_ar: int
     nexus_mr: int
     defense_constant: int
+    minimum_damage: int
+    simulation_safety_limit: int
+    simulation_card_play_limit_per_action: int
 
 
 class BattleSnapshotResponse(ApiSchema):

@@ -7,12 +7,26 @@ import type {
   ParticipantSnapshot,
 } from '../types/battleReplay'
 
-export type PrimaryTarget = {
-  participantId: string
-  kind: 'attack' | 'heal' | 'other'
-} | null
+export type PrimaryTarget =
+  | {
+      kind: 'participant'
+      participantId: string
+      effectKind: 'attack' | 'heal' | 'other'
+    }
+  | {
+      kind: 'nexus'
+      side: 'ally' | 'enemy'
+      effectKind: 'attack'
+    }
+  | null
 
-export type ActionPhaseId = 'standby' | 'draw' | 'card_action' | 'effect_result' | 'action_end'
+export type ActionPhaseId =
+  | 'standby'
+  | 'movement'
+  | 'draw'
+  | 'card_action'
+  | 'effect_result'
+  | 'action_end'
 export type ActionPhaseStatus = 'completed' | 'skipped' | 'warning' | 'failed'
 export type ActionPhaseItem = {
   label: string
@@ -27,11 +41,12 @@ export type ActionPhaseView = {
 }
 
 const phaseTitles: Record<ActionPhaseId, string> = {
-  standby: '① 行動準備',
-  draw: '② ドロー',
-  card_action: '③ カードアクション',
-  effect_result: '④ 効果解決',
-  action_end: '⑤ 行動終了',
+  standby: '① 復活・行動準備',
+  movement: '② 移動・対面・PUSH',
+  draw: '③ ドロー',
+  card_action: '④ カードアクション',
+  effect_result: '⑤ 効果解決',
+  action_end: '⑥ 行動終了',
 }
 
 export function sideName(side: string): string {
@@ -86,6 +101,7 @@ export function buildActionPhases(
   }
   return [
     buildStandbyPhase(events),
+    buildMovementPhase(events),
     buildDrawPhase(events, catalog),
     buildCardActionPhase(snapshot, events, catalog),
     buildEffectResultPhase(snapshot, events, catalog),
@@ -95,11 +111,36 @@ export function buildActionPhases(
 
 function buildStandbyPhase(events: BattleEvent[]): ActionPhaseView {
   const items: ActionPhaseItem[] = []
+  const respawnWaited = events.find((event) => event.event_type === 'respawn_waited')
+  const respawned = events.find((event) => event.event_type === 'character_respawned')
+  const deckShuffled = events.find((event) => event.event_type === 'deck_shuffled')
   const health = events.find(
     (event) => event.event_type === 'health_recovered' && event.payload.reason === 'action_right',
   )
   const mana = events.find((event) => event.event_type === 'mana_recovered')
   const drawGauge = events.find((event) => event.event_type === 'gauge_changed')
+
+  if (respawnWaited) {
+    items.push({
+      label: `復活まで残り：${numberPayload(respawnWaited, 'after')}回`,
+      importance: 'primary',
+    })
+    items.push({
+      label: 'このActionでは移動・カード使用を行いません',
+      importance: 'secondary',
+    })
+    return phase('standby', 'warning', items)
+  }
+
+  if (respawned) {
+    items.push({
+      label: `復活：HP ${numberPayload(respawned, 'hp')} / MP ${numberPayload(respawned, 'mp')}`,
+      importance: 'primary',
+    })
+  }
+  if (deckShuffled) {
+    items.push({ label: 'Deckを再シャッフル', importance: 'secondary' })
+  }
 
   if (health) {
     items.push({ label: recoveryLine('HP回復', 'HPR', health), importance: 'secondary' })
@@ -133,6 +174,44 @@ function buildStandbyPhase(events: BattleEvent[]): ActionPhaseView {
   return phase('standby', 'completed', items)
 }
 
+function buildMovementPhase(events: BattleEvent[]): ActionPhaseView {
+  const items: ActionPhaseItem[] = []
+  for (const event of events) {
+    if (event.event_type === 'lane_moved') {
+      const mode = event.payload.mode === 'push' ? 'PUSH' : '前進'
+      const lane = event.lane_id ? event.lane_id.toUpperCase() : '-'
+      items.push({
+        label: `${lane}レーン ${mode}：${numberPayload(event, 'before')} → ${numberPayload(event, 'after')}`,
+        detail:
+          event.payload.advance !== undefined
+            ? `差分 +${numberPayload(event, 'advance')}`
+            : undefined,
+        importance: 'primary',
+      })
+    }
+    if (event.event_type === 'engagement_started') {
+      items.push({
+        label: `対面開始：位置 ${numberPayload(event, 'position')}`,
+        importance: 'primary',
+      })
+    }
+    if (event.event_type === 'engagement_ended') {
+      items.push({ label: '対面解除', importance: 'secondary' })
+    }
+    if (event.event_type === 'target_selection_failed') {
+      items.push({
+        label: `対象なし：${String(event.payload.reason ?? '-')}`,
+        importance: 'secondary',
+      })
+    }
+  }
+  if (!items.length) {
+    items.push({ label: '移動・対面変化なし', importance: 'secondary' })
+    return phase('movement', 'skipped', items)
+  }
+  return phase('movement', 'completed', items)
+}
+
 function buildDrawPhase(events: BattleEvent[], catalog: DisplayCatalog): ActionPhaseView {
   const drawGauge = events.find((event) => event.event_type === 'gauge_changed')
   const triggerCount = drawGauge ? numberPayload(drawGauge, 'trigger_count') : 0
@@ -145,6 +224,8 @@ function buildDrawPhase(events: BattleEvent[], catalog: DisplayCatalog): ActionP
     (event) =>
       event.event_type === 'card_draw_blocked' && event.payload.draw_source === 'draw_gauge',
   )
+  const recycled = events.filter((event) => event.event_type === 'discard_recycled')
+  const overflow = events.filter((event) => event.event_type === 'card_overflow_discarded')
   const items: ActionPhaseItem[] = []
 
   if (triggerCount === 0) {
@@ -159,6 +240,22 @@ function buildDrawPhase(events: BattleEvent[], catalog: DisplayCatalog): ActionP
   }
 
   items.push({ label: `ドロー権を${triggerCount}回使用`, importance: 'primary' })
+  for (const event of recycled) {
+    items.push({
+      label: '捨て札をシャッフルして山札を再構築',
+      detail: `shuffle_count: ${numberPayload(event, 'shuffle_count')}`,
+      importance: 'secondary',
+    })
+  }
+  for (const event of overflow) {
+    items.push({
+      label: `手札上限${numberPayload(event, 'hand_limit')}枚：最古の「${cardName(
+        catalog,
+        event.payload.card_id,
+      )}」を捨てた`,
+      importance: 'primary',
+    })
+  }
   for (const [index, event] of drawnCards.entries()) {
     const prefix = drawnCards.length > 1 ? `${index + 1}枚目：` : ''
     items.push({
@@ -188,8 +285,9 @@ function buildCardActionPhase(
   const actor = snapshot.acted_actor_id ? snapshot.participants[snapshot.acted_actor_id] : null
   const attempts = events.filter((event) => event.event_type === 'card_attempted')
   const heldCards = events.filter((event) => event.event_type === 'card_held')
-  const usedCard = events.find((event) => event.event_type === 'card_used')
-  const manaSpent = events.find((event) => event.event_type === 'mana_spent')
+  const usedCards = events.filter((event) => event.event_type === 'card_used')
+  const manaSpentEvents = events.filter((event) => event.event_type === 'mana_spent')
+  const grants = events.filter((event) => event.event_type === 'grant_card_play')
   const items: ActionPhaseItem[] = []
 
   if (!actor) {
@@ -197,7 +295,7 @@ function buildCardActionPhase(
     return phase('card_action', 'skipped', items)
   }
 
-  if (actor.hand.length === 0 && attempts.length === 0 && heldCards.length === 0 && !usedCard) {
+  if (actor.hand.length === 0 && attempts.length === 0 && heldCards.length === 0 && !usedCards.length) {
     items.push({ label: '手札にカードがありませんでした', importance: 'secondary' })
     return phase('card_action', 'skipped', items)
   }
@@ -216,21 +314,40 @@ function buildCardActionPhase(
     })
   }
 
-  if (!usedCard) {
+  if (!usedCards.length) {
     items.push({ label: '使用できるカードがありませんでした', importance: 'primary' })
     return phase('card_action', heldCards.length > 0 ? 'warning' : 'skipped', items)
   }
 
-  items.push({ label: `「${cardName(catalog, usedCard.payload.card_id)}」を選択`, importance: 'primary' })
-  items.push({ label: `対象：${targetLabel(snapshot, usedCard.target_id, catalog)}`, importance: 'secondary' })
-  if (manaSpent) {
-    items.push({ label: `消費MP：${numberPayload(manaSpent, 'amount')}`, importance: 'secondary' })
+  for (const [index, usedCard] of usedCards.entries()) {
+    const cardPlayIndex = numberPayload(usedCard, 'card_play_index', index + 1)
+    const manaSpent =
+      manaSpentEvents.find(
+        (event) => numberPayload(event, 'card_play_index', -1) === cardPlayIndex,
+      ) ?? manaSpentEvents[index]
     items.push({
-      label: `MP：${numberPayload(manaSpent, 'before')} → ${numberPayload(manaSpent, 'after')}`,
-      importance: 'secondary',
+      label: `${cardPlayIndex}枚目：「${cardName(catalog, usedCard.payload.card_id)}」を選択`,
+      importance: 'primary',
     })
-  } else {
-    items.push({ label: '消費MP：0', importance: 'secondary' })
+    items.push({ label: `対象：${targetLabel(snapshot, usedCard.target_id, catalog)}`, importance: 'secondary' })
+    if (manaSpent) {
+      items.push({ label: `消費MP：${numberPayload(manaSpent, 'amount')}`, importance: 'secondary' })
+      items.push({
+        label: `MP：${numberPayload(manaSpent, 'before')} → ${numberPayload(manaSpent, 'after')}`,
+        importance: 'secondary',
+      })
+    } else {
+      items.push({ label: '消費MP：0', importance: 'secondary' })
+    }
+    for (const grant of grants.filter(
+      (event) => numberPayload(event, 'card_play_index', -1) === cardPlayIndex,
+    )) {
+      items.push({
+        label: `追加カード使用権：+${numberPayload(grant, 'amount')}`,
+        detail: `残り使用権：${numberPayload(grant, 'remaining_card_plays')}`,
+        importance: 'primary',
+      })
+    }
   }
   return phase('card_action', heldCards.length > 0 ? 'warning' : 'completed', items)
 }
@@ -249,6 +366,9 @@ function buildEffectResultPhase(
       'card_drawn',
       'card_draw_blocked',
       'character_defeated',
+      'nexus_damaged',
+      'nexus_destroyed',
+      'grant_card_play',
     ].includes(event.event_type),
   )
 
@@ -279,6 +399,23 @@ function buildEffectResultPhase(
       items.push({
         label: `HP：${numberPayload(event, 'before')} → ${numberPayload(event, 'after')}`,
         importance: 'secondary',
+      })
+    }
+    if (event.event_type === 'nexus_damaged') {
+      const target = targetLabel(snapshot, event.target_id, catalog)
+      items.push({
+        label: `${target}に${numberPayload(event, 'applied')}ダメージ`,
+        importance: 'primary',
+      })
+      items.push({
+        label: `Nexus HP：${numberPayload(event, 'before')} → ${numberPayload(event, 'after')}`,
+        importance: 'secondary',
+      })
+    }
+    if (event.event_type === 'nexus_destroyed') {
+      items.push({
+        label: `${targetLabel(snapshot, event.target_id, catalog)}を破壊しました`,
+        importance: 'primary',
       })
     }
     if (event.event_type === 'health_recovered') {
@@ -379,6 +516,12 @@ function targetLabel(
   if (!participantId) {
     return '-'
   }
+  if (participantId === 'enemy_nexus') {
+    return '敵Nexus'
+  }
+  if (participantId === 'ally_nexus') {
+    return '味方Nexus'
+  }
   const participant = snapshot.participants[participantId]
   return participant ? `${sideName(participant.side)}・${participantName(catalog, participantId)}` : participantName(catalog, participantId)
 }
@@ -413,7 +556,7 @@ function endReasonText(reason: unknown): string {
   if (reason === 'ally_defeated') {
     return '味方チームが全滅しました'
   }
-  if (reason === 'max_actions') {
+  if (reason === 'simulation_safety_limit') {
     return '最大行動回数に到達しました'
   }
   return '戦闘が終了しました'
@@ -422,25 +565,33 @@ function endReasonText(reason: unknown): string {
 export function primaryTarget(events: BattleEvent[]): PrimaryTarget {
   const defeated = events.find((event) => event.event_type === 'character_defeated')
   if (defeated?.actor_id) {
-    return { participantId: defeated.actor_id, kind: 'attack' }
+    return { kind: 'participant', participantId: defeated.actor_id, effectKind: 'attack' }
   }
   const damaged = events.find((event) => event.event_type === 'damage_applied')
   if (damaged?.target_id) {
-    return { participantId: damaged.target_id, kind: 'attack' }
+    return { kind: 'participant', participantId: damaged.target_id, effectKind: 'attack' }
+  }
+  const nexusDamaged = events.find((event) => event.event_type === 'nexus_damaged')
+  if (nexusDamaged?.target_id === 'enemy_nexus' || nexusDamaged?.target_id === 'ally_nexus') {
+    return {
+      kind: 'nexus',
+      side: nexusDamaged.target_id === 'enemy_nexus' ? 'enemy' : 'ally',
+      effectKind: 'attack',
+    }
   }
   const healed = events.find(
     (event) => event.event_type === 'health_recovered' && event.payload.reason === 'card_effect',
   )
   if (healed?.target_id) {
-    return { participantId: healed.target_id, kind: 'heal' }
+    return { kind: 'participant', participantId: healed.target_id, effectKind: 'heal' }
   }
   const manaGained = events.find((event) => event.event_type === 'mana_gained')
   if (manaGained?.actor_id) {
-    return { participantId: manaGained.actor_id, kind: 'heal' }
+    return { kind: 'participant', participantId: manaGained.actor_id, effectKind: 'heal' }
   }
   const cardUsed = events.find((event) => event.event_type === 'card_used')
-  if (cardUsed?.target_id) {
-    return { participantId: cardUsed.target_id, kind: 'other' }
+  if (cardUsed?.target_id && !cardUsed.target_id.endsWith('_nexus')) {
+    return { kind: 'participant', participantId: cardUsed.target_id, effectKind: 'other' }
   }
   return null
 }
@@ -481,9 +632,12 @@ export function cardAttemptDebugLines(events: BattleEvent[], catalog: DisplayCat
     })
 }
 
-export function numberPayload(event: BattleEvent, key: string): number {
+export function numberPayload(event: BattleEvent, key: string, fallback?: number): number {
   const value = event.payload[key]
   if (typeof value !== 'number') {
+    if (fallback !== undefined) {
+      return fallback
+    }
     throw new Error(`Invalid event payload: ${event.event_type}.${key}`)
   }
   return value

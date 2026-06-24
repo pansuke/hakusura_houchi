@@ -413,7 +413,7 @@ describe('App', () => {
 
   test('normal display hides alive and removed gauges', async () => {
     const wrapper = await mountLoadedApp()
-    const normalText = wrapper.find('.combatants').text()
+    const normalText = wrapper.find('.battlefield-panel').text()
 
     expect(normalText).not.toContain('Alive')
     expect(normalText).not.toContain('yes')
@@ -432,7 +432,7 @@ describe('App', () => {
     await wrapper.findAll('button').find((button) => button.text() === '次へ')?.trigger('click')
     await vi.runOnlyPendingTimersAsync()
 
-    const normalText = wrapper.find('.combatants').text()
+    const normalText = wrapper.find('.battlefield-panel').text()
     expect(normalText).toContain('戦士')
     expect(normalText).toContain('ゴブリン')
     expect(normalText).toContain('精神集中')
@@ -468,7 +468,7 @@ describe('App', () => {
     vi.useFakeTimers()
     const wrapper = await mountLoadedApp()
 
-    expect(wrapper.find('.combatants').text()).not.toContain('戦闘不能')
+    expect(wrapper.find('.battlefield-panel').text()).not.toContain('戦闘不能')
     await wrapper.findAll('button').find((button) => button.text() === '最後')?.trigger('click')
     await vi.runOnlyPendingTimersAsync()
 

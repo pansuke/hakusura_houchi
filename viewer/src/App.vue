@@ -94,70 +94,92 @@
       <p v-else-if="!replay" class="loading-text">{{ uiLabels.loading }}</p>
 
       <template v-if="currentSnapshot && replay">
-        <ActionSummary
-          v-if="currentSnapshot.action_index > 0"
-          :catalog="replay.display_catalog"
-          :events="currentEvents"
-          :last-cursor="lastCursor"
-          :snapshot="currentSnapshot"
-        />
-        <InitialBattleState
-          v-else
-          :catalog="replay.display_catalog"
-          :last-cursor="lastCursor"
-          :snapshot="currentSnapshot"
-        />
-
-        <section v-if="nexusStates.length" class="nexus-row" aria-label="Nexus states">
-          <article v-for="nexus in nexusStates" :key="nexus.side" class="nexus-card">
-            <p class="combatant-side">{{ nexus.side === 'ally' ? '味方Nexus' : '敵Nexus' }}</p>
-            <strong>{{ nexus.hp }} / {{ nexus.max_hp }}</strong>
-            <span>AR {{ nexus.ar }} / MR {{ nexus.mr }}</span>
-          </article>
-        </section>
-
-        <section v-if="laneStates.length" class="lane-map" aria-label="Lane positions">
-          <article v-for="lane in laneStates" :key="lane.laneId" class="lane-track">
-            <h3>{{ lane.laneId.toUpperCase() }}</h3>
-            <div class="lane-bar">
-              <span class="lane-nexus ally">味方Nexus</span>
-              <span
-                v-if="lane.ally?.alive"
-                class="lane-marker ally"
-                :style="{ left: `${lane.allyPositionPercent}%` }"
-                title="味方"
-              >●</span>
-              <span
-                v-if="lane.enemy?.alive"
-                class="lane-marker enemy"
-                :style="{ left: `${lane.enemyPositionPercent}%` }"
-                title="敵"
-              >○</span>
-              <span class="lane-nexus enemy">敵Nexus</span>
+        <section class="replay-layout" aria-label="Battle replay layout">
+          <section class="battlefield-panel" aria-label="Battlefield">
+            <div class="team-row enemy-team" aria-label="Enemy team">
+              <ParticipantCard
+                v-for="participant in enemyParticipants"
+                :key="participant.participant_id"
+                :catalog="replay.display_catalog"
+                :is-actor="participant.participant_id === currentSnapshot.acted_actor_id"
+                :is-next="participant.participant_id === currentSnapshot.next_actor_id"
+                :participant="participant"
+                :primary-target="primaryTargetInfo"
+              />
             </div>
-            <p class="lane-meta">
-              味方 {{ lane.ally?.position ?? '-' }} / 敵 {{ lane.enemy?.position ?? '-' }}
-            </p>
-          </article>
-        </section>
 
-        <section class="combatants">
-          <ParticipantCard
-            v-for="participant in participantList"
-            :key="participant.participant_id"
-            :catalog="replay.display_catalog"
-            :is-actor="participant.participant_id === currentSnapshot.acted_actor_id"
-            :is-next="participant.participant_id === currentSnapshot.next_actor_id"
-            :participant="participant"
-            :primary-target="primaryTargetInfo"
-          />
-        </section>
+            <article v-if="enemyNexus" class="nexus-card nexus-card-enemy">
+              <p class="combatant-side">敵Nexus</p>
+              <strong>{{ enemyNexus.hp }} / {{ enemyNexus.max_hp }}</strong>
+              <span>AR {{ enemyNexus.ar }} / MR {{ enemyNexus.mr }}</span>
+            </article>
 
-        <DebugEventList
-          :catalog="replay.display_catalog"
-          :events="currentEvents"
-          :snapshot="currentSnapshot"
-        />
+            <section v-if="laneStates.length" class="lane-map arena-lane-map" aria-label="Lane positions">
+              <article v-for="lane in laneStates" :key="lane.laneId" class="lane-track">
+                <h3>{{ lane.laneId.toUpperCase() }}</h3>
+                <div class="lane-bar">
+                  <span class="lane-nexus ally">味方</span>
+                  <span
+                    v-if="lane.ally?.alive"
+                    class="lane-marker ally"
+                    :style="{ left: `${lane.allyPositionPercent}%` }"
+                    title="味方"
+                  >●</span>
+                  <span
+                    v-if="lane.enemy?.alive"
+                    class="lane-marker enemy"
+                    :style="{ left: `${lane.enemyPositionPercent}%` }"
+                    title="敵"
+                  >●</span>
+                  <span class="lane-nexus enemy">敵</span>
+                </div>
+                <p class="lane-meta">
+                  味方 {{ lane.ally?.position ?? '-' }} / 敵 {{ lane.enemy?.position ?? '-' }}
+                </p>
+              </article>
+            </section>
+
+            <article v-if="allyNexus" class="nexus-card nexus-card-ally">
+              <p class="combatant-side">味方Nexus</p>
+              <strong>{{ allyNexus.hp }} / {{ allyNexus.max_hp }}</strong>
+              <span>AR {{ allyNexus.ar }} / MR {{ allyNexus.mr }}</span>
+            </article>
+
+            <div class="team-row ally-team" aria-label="Ally team">
+              <ParticipantCard
+                v-for="participant in allyParticipants"
+                :key="participant.participant_id"
+                :catalog="replay.display_catalog"
+                :is-actor="participant.participant_id === currentSnapshot.acted_actor_id"
+                :is-next="participant.participant_id === currentSnapshot.next_actor_id"
+                :participant="participant"
+                :primary-target="primaryTargetInfo"
+              />
+            </div>
+          </section>
+
+          <aside class="replay-log-panel" aria-label="Replay text logs">
+            <ActionSummary
+              v-if="currentSnapshot.action_index > 0"
+              :catalog="replay.display_catalog"
+              :events="currentEvents"
+              :last-cursor="lastCursor"
+              :snapshot="currentSnapshot"
+            />
+            <InitialBattleState
+              v-else
+              :catalog="replay.display_catalog"
+              :last-cursor="lastCursor"
+              :snapshot="currentSnapshot"
+            />
+
+            <DebugEventList
+              :catalog="replay.display_catalog"
+              :events="currentEvents"
+              :snapshot="currentSnapshot"
+            />
+          </aside>
+        </section>
       </template>
     </section>
   </main>
@@ -224,11 +246,22 @@ const participantList = computed(() =>
   ),
 )
 
+const allyParticipants = computed(() =>
+  participantList.value.filter((participant) => participant.side === 'ally'),
+)
+
+const enemyParticipants = computed(() =>
+  participantList.value.filter((participant) => participant.side === 'enemy'),
+)
+
 const nexusStates = computed(() =>
   Object.values(currentSnapshot.value?.nexus_states ?? {}).sort(
     (left, right) => (sideOrder[left.side] ?? 99) - (sideOrder[right.side] ?? 99),
   ),
 )
+
+const allyNexus = computed(() => nexusStates.value.find((nexus) => nexus.side === 'ally'))
+const enemyNexus = computed(() => nexusStates.value.find((nexus) => nexus.side === 'enemy'))
 
 const laneStates = computed(() => {
   const participants = Object.values(currentSnapshot.value?.participants ?? {})

@@ -18,7 +18,7 @@ body {
 .app-shell {
   display: grid;
   min-height: 100vh;
-  place-items: center;
+  place-items: start center;
   padding: 32px;
   background:
     linear-gradient(135deg, rgba(120, 36, 30, 0.28), transparent 42%),
@@ -27,7 +27,7 @@ body {
 }
 
 .status-panel {
-  width: min(920px, 100%);
+  width: min(1440px, 100%);
   border: 1px solid rgba(244, 241, 232, 0.18);
   border-radius: 8px;
   padding: clamp(24px, 5vw, 48px);
@@ -147,6 +147,43 @@ input {
   gap: 14px;
 }
 
+.replay-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(360px, 0.85fr);
+  align-items: start;
+  gap: 18px;
+}
+
+.battlefield-panel {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.replay-log-panel {
+  position: sticky;
+  top: 24px;
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  max-height: calc(100vh - 48px);
+}
+
+.team-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  min-width: 0;
+}
+
+.enemy-team {
+  align-items: end;
+}
+
+.ally-team {
+  align-items: start;
+}
+
 .nexus-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -175,6 +212,17 @@ input {
 .lane-map {
   display: grid;
   gap: 14px;
+}
+
+.arena-lane-map {
+  gap: 10px;
+  border: 1px solid rgba(244, 241, 232, 0.14);
+  border-radius: 12px;
+  padding: 14px;
+  background:
+    linear-gradient(180deg, rgba(255, 141, 124, 0.08), transparent 34%),
+    linear-gradient(0deg, rgba(142, 230, 164, 0.08), transparent 34%),
+    rgba(244, 241, 232, 0.035);
 }
 
 .lane-track {
@@ -270,7 +318,11 @@ input {
 
 .action-summary {
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 12px;
+  min-height: 0;
+  max-height: min(58vh, 680px);
+  overflow: hidden;
   border: 1px solid rgba(225, 180, 95, 0.35);
   border-radius: 10px;
   padding: 16px;
@@ -320,9 +372,12 @@ input {
 
 .phase-list {
   display: grid;
+  gap: 14px;
   margin: 4px 0 0;
-  padding: 0;
+  padding: 0 8px 0 0;
+  overflow-y: auto;
   list-style: none;
+  scrollbar-color: rgba(225, 180, 95, 0.62) rgba(244, 241, 232, 0.08);
 }
 
 .action-phase {
@@ -408,10 +463,14 @@ input {
 }
 
 .combatant {
+  min-width: 0;
+  max-height: 360px;
+  overflow-y: auto;
   border: 1px solid rgba(244, 241, 232, 0.15);
   border-radius: 8px;
   padding: 16px;
   background: rgba(26, 31, 24, 0.86);
+  scrollbar-color: rgba(225, 180, 95, 0.62) rgba(244, 241, 232, 0.08);
 }
 
 .combatant-actor {
@@ -501,8 +560,12 @@ input {
 }
 
 .debug-panel {
+  min-height: 0;
+  max-height: min(34vh, 360px);
+  overflow-y: auto;
   border-top: 1px solid rgba(244, 241, 232, 0.14);
   padding-top: 18px;
+  scrollbar-color: rgba(225, 180, 95, 0.62) rgba(244, 241, 232, 0.08);
 }
 
 .debug-panel details,
@@ -642,11 +705,22 @@ dd {
   .panel-header,
   .nexus-row,
   .rule-config-grid,
+  .replay-layout,
+  .team-row,
   .combatants {
     grid-template-columns: 1fr;
   }
 
   .panel-header {
     display: grid;
+  }
+
+  .replay-log-panel {
+    position: static;
+    max-height: none;
+  }
+
+  .action-summary {
+    max-height: 62vh;
   }
 }

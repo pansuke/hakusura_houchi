@@ -16,6 +16,14 @@
 - card_held.reasonは具体的な理由になる
 - gauge_changedはbefore/gain/trigger_count/afterを返す
 - Snapshotはacted_actor_idとnext_actor_idを返す
+- M3はTOP味方から固定スロット順でActionを進める
+- M3は本番Deck Runtimeで初期手札3・最大手札7・overflow discardを行う
+- M3は最古カードだけを使用判定し、使用不能なら後続カードを探索しない
+- M3はbase + scalingと防御式でDamageを計算する
+- M3はconsumes_action=falseのカード後に同一Actionで次カードを試行する
+- M3はAdjacent / Global Scopeで対象を選択する
+- M3は死亡後、自分の行動機会で復活待ちを数える
+- M3はNexus破壊で勝敗を確定し、Safety Limit到達をerrorにする
 """
 
 from dataclasses import asdict
@@ -27,6 +35,7 @@ from lane_relay.engine.battle_engine import (
     BattleEffect,
     BattleEngine,
     BattleParticipantSetup,
+    BattleRuleConfig,
     BattleScenario,
     BattleScenarioError,
 )
@@ -61,6 +70,34 @@ def draw_card(card_id: str, power: int, mp_cost: int = 0) -> BattleCard:
         card_id=card_id,
         mp_cost=mp_cost,
         effects=[BattleEffect(effect_type="draw_card", target="self", value=power)],
+    )
+
+
+def m3_damage_card(
+    card_id: str,
+    value: int,
+    mp_cost: int = 0,
+    scope: str = "local",
+    damage_type: str = "true",
+    base_damage: int | None = None,
+    consumes_action: bool = True,
+    scaling: list[dict[str, int]] | None = None,
+) -> BattleCard:
+    return BattleCard(
+        card_id=card_id,
+        mp_cost=mp_cost,
+        consumes_action=consumes_action,
+        effects=[
+            BattleEffect(
+                effect_type="damage",
+                target="enemy",
+                value=value,
+                scope=scope,
+                damage_type=damage_type,
+                base_damage=base_damage,
+                scaling=scaling or [],
+            )
+        ],
     )
 
 
@@ -103,6 +140,121 @@ def scenario(
         max_actions=max_actions,
         seed=1,
     )
+
+
+def m3_participant(
+    participant_id: str,
+    side: str,
+    lane_id: str,
+    deck: list[BattleCard],
+    hp: int = 30,
+    mp: int = 3,
+    ds: int = 0,
+    push: int = 0,
+    ad: int = 0,
+    ap: int = 0,
+    ar: int = 0,
+    mr: int = 0,
+) -> BattleParticipantSetup:
+    return BattleParticipantSetup(
+        participant_id=participant_id,
+        side=side,
+        character_master_id=f"character_{participant_id}",
+        max_hp=hp,
+        max_mp=mp,
+        initial_hp=hp,
+        initial_mp=mp,
+        ds=ds,
+        mpr=0,
+        hpr=0,
+        deck=deck,
+        lane_id=lane_id,
+        push=push,
+        ad=ad,
+        ap=ap,
+        ar=ar,
+        mr=mr,
+    )
+
+
+def m3_scenario(
+    participants: list[BattleParticipantSetup],
+    max_actions: int = 50,
+    seed: int = 1,
+    rule_config: BattleRuleConfig | None = None,
+) -> BattleScenario:
+    return BattleScenario(
+        battle_id="battle_m3_test_001",
+        participants=participants,
+        turn_order=[
+            "top_ally",
+            "top_enemy",
+            "mid_ally",
+            "mid_enemy",
+            "bot_ally",
+            "bot_enemy",
+        ],
+        max_actions=max_actions,
+        seed=seed,
+        rule_config=rule_config or BattleRuleConfig(),
+    )
+
+
+def m3_lane_participants(
+    top_ally_deck: list[BattleCard] | None = None,
+    top_enemy_deck: list[BattleCard] | None = None,
+    mid_ally_deck: list[BattleCard] | None = None,
+    mid_enemy_deck: list[BattleCard] | None = None,
+    bot_ally_deck: list[BattleCard] | None = None,
+    bot_enemy_deck: list[BattleCard] | None = None,
+) -> list[BattleParticipantSetup]:
+    filler = [m3_damage_card("card_filler", 0)]
+    nexus_breaker = [
+        m3_damage_card("card_nexus_breaker_1", 1000),
+        m3_damage_card("card_nexus_breaker_2", 1000),
+        m3_damage_card("card_nexus_breaker_3", 1000),
+    ]
+    return [
+        m3_participant("top_ally", "ally", "top", top_ally_deck or filler, push=1000),
+        m3_participant(
+            "top_enemy",
+            "enemy",
+            "top",
+            top_enemy_deck or filler,
+            hp=1,
+            push=0,
+        ),
+        m3_participant(
+            "mid_ally",
+            "ally",
+            "mid",
+            mid_ally_deck or nexus_breaker,
+            push=1000,
+        ),
+        m3_participant(
+            "mid_enemy",
+            "enemy",
+            "mid",
+            mid_enemy_deck or filler,
+            hp=1,
+            push=0,
+        ),
+        m3_participant(
+            "bot_ally",
+            "ally",
+            "bot",
+            bot_ally_deck or filler,
+            push=1000,
+        ),
+        m3_participant(
+            "bot_enemy",
+            "enemy",
+            "bot",
+            bot_enemy_deck or filler,
+            hp=1,
+            push=0,
+        ),
+    ]
 
 
 def test_same_input_generates_same_replay() -> None:
@@ -625,3 +777,299 @@ def test_scenario_validation_rejects_invalid_participant_setup(
 
     with pytest.raises(BattleScenarioError):
         BattleEngine().simulate(battle_scenario)
+
+
+def test_m3_uses_fixed_lane_turn_order_and_snapshot_contract() -> None:
+    replay = BattleEngine().simulate(
+        m3_scenario(
+            m3_lane_participants(
+                top_ally_deck=[m3_damage_card("card_top", 1)],
+                mid_ally_deck=[
+                    m3_damage_card("card_mid_1", 1000),
+                    m3_damage_card("card_mid_2", 1000),
+                    m3_damage_card("card_mid_3", 1000),
+                ],
+            ),
+            rule_config=BattleRuleConfig(nexus_max_hp=1),
+        )
+    )
+
+    action_started = [
+        event
+        for event in replay.events
+        if event.event_type == "action_started"
+    ]
+    assert [event.actor_id for event in action_started[:4]] == [
+        "top_ally",
+        "top_enemy",
+        "mid_ally",
+        "mid_enemy",
+    ]
+    assert action_started[0].lane_id == "top"
+    assert replay.snapshots[0].next_actor_id == "top_ally"
+    top_snapshot = replay.snapshots[0].participants["top_ally"]
+    assert top_snapshot.lane_id == "top"
+    assert top_snapshot.position == 0
+    assert replay.snapshots[0].nexus_states["enemy"].hp == 1
+    assert replay.snapshots[0].applied_rule_config is not None
+
+
+def test_m3_deck_runtime_draws_and_discards_oldest_on_overflow() -> None:
+    cards = [m3_damage_card(f"card_{index}", 1, mp_cost=99) for index in range(8)]
+    participants = m3_lane_participants(
+        top_ally_deck=cards,
+        mid_ally_deck=[
+            m3_damage_card("card_mid_1", 1000),
+            m3_damage_card("card_mid_2", 1000),
+            m3_damage_card("card_mid_3", 1000),
+        ],
+    )
+    participants[0] = m3_participant(
+        "top_ally",
+        "ally",
+        "top",
+        cards,
+        ds=100,
+        push=1000,
+    )
+    replay = BattleEngine().simulate(
+        m3_scenario(
+            participants,
+            rule_config=BattleRuleConfig(
+                initial_hand_size=7,
+                max_hand_size=7,
+                nexus_max_hp=1,
+            ),
+        )
+    )
+
+    overflow_event = next(
+        event for event in replay.events if event.event_type == "card_overflow_discarded"
+    )
+    draw_event = next(event for event in replay.events if event.event_type == "card_drawn")
+
+    assert overflow_event.actor_id == "top_ally"
+    assert overflow_event.payload["hand_limit"] == 7
+    assert draw_event.actor_id == "top_ally"
+    assert draw_event.payload["hand_size_after"] == 7
+
+
+def test_m3_checks_only_oldest_card_before_holding_action() -> None:
+    replay = BattleEngine().simulate(
+        m3_scenario(
+            m3_lane_participants(
+                top_ally_deck=[
+                    m3_damage_card("card_expensive", 1, mp_cost=99),
+                    m3_damage_card("card_cheap", 1),
+                    m3_damage_card("card_third", 1),
+                ],
+                mid_ally_deck=[
+                    m3_damage_card("card_mid_1", 1000),
+                    m3_damage_card("card_mid_2", 1000),
+                    m3_damage_card("card_mid_3", 1000),
+                ],
+            ),
+            rule_config=BattleRuleConfig(initial_hand_size=2, nexus_max_hp=1),
+        )
+    )
+
+    held = next(
+        event
+        for event in replay.events
+        if event.event_type == "card_held" and event.actor_id == "top_ally"
+    )
+    top_used_card_ids = [
+        event.payload["card_id"]
+        for event in replay.events
+        if event.event_type == "card_used" and event.actor_id == "top_ally"
+    ]
+    assert held.payload["card_id"] == "card_expensive"
+    assert held.payload["reason"] == "insufficient_mana"
+    assert "card_cheap" not in top_used_card_ids
+
+
+def test_m3_damage_uses_scaling_and_lol_defense_formula() -> None:
+    participants = m3_lane_participants(
+        top_ally_deck=[
+            m3_damage_card(
+                "card_scaled_physical",
+                0,
+                damage_type="physical",
+                base_damage=80,
+                scaling=[{"stat": "ad", "ratio_bp": 20000}],
+            )
+        ],
+        mid_ally_deck=[
+            m3_damage_card("card_mid_1", 1000),
+            m3_damage_card("card_mid_2", 1000),
+            m3_damage_card("card_mid_3", 1000),
+        ],
+    )
+    participants[0] = m3_participant(
+        "top_ally",
+        "ally",
+        "top",
+        [
+            m3_damage_card(
+                "card_scaled_physical",
+                0,
+                damage_type="physical",
+                base_damage=80,
+                scaling=[{"stat": "ad", "ratio_bp": 20000}],
+            )
+        ],
+        push=1000,
+        ad=20,
+    )
+    participants[1] = m3_participant(
+        "top_enemy",
+        "enemy",
+        "top",
+        [m3_damage_card("card_filler", 0)],
+        hp=100,
+        ar=100,
+    )
+    replay = BattleEngine().simulate(
+        m3_scenario(
+            participants,
+            rule_config=BattleRuleConfig(nexus_max_hp=1),
+        )
+    )
+
+    damage_event = next(
+        event
+        for event in replay.events
+        if event.event_type == "damage_applied" and event.actor_id == "top_ally"
+    )
+
+    assert damage_event.payload["requested"] == 60
+
+
+def test_m3_non_consuming_card_allows_next_oldest_card_in_same_action() -> None:
+    replay = BattleEngine().simulate(
+        m3_scenario(
+            m3_lane_participants(
+                top_ally_deck=[
+                    m3_damage_card("card_free_ping", 1, consumes_action=False),
+                    m3_damage_card("card_action_hit", 1),
+                ],
+                mid_ally_deck=[
+                    m3_damage_card("card_mid_1", 1000),
+                    m3_damage_card("card_mid_2", 1000),
+                    m3_damage_card("card_mid_3", 1000),
+                ],
+            ),
+            rule_config=BattleRuleConfig(initial_hand_size=2, nexus_max_hp=1),
+        )
+    )
+
+    top_card_used = [
+        event
+        for event in replay.events
+        if event.event_type == "card_used" and event.actor_id == "top_ally"
+    ]
+
+    assert [event.payload["card_id"] for event in top_card_used[:2]] == [
+        "card_free_ping",
+        "card_action_hit",
+    ]
+    assert top_card_used[0].action_index == top_card_used[1].action_index
+
+
+def test_m3_adjacent_and_global_scope_target_living_enemy_characters_only() -> None:
+    replay = BattleEngine().simulate(
+        m3_scenario(
+            m3_lane_participants(
+                top_ally_deck=[
+                    m3_damage_card("card_adjacent", 2, scope="adjacent", consumes_action=False),
+                    m3_damage_card("card_global", 2, scope="global"),
+                ],
+                mid_ally_deck=[
+                    m3_damage_card("card_mid_1", 1000),
+                    m3_damage_card("card_mid_2", 1000),
+                    m3_damage_card("card_mid_3", 1000),
+                ],
+            ),
+            rule_config=BattleRuleConfig(initial_hand_size=2, nexus_max_hp=1),
+        )
+    )
+
+    adjacent_damage = next(
+        event
+        for event in replay.events
+        if event.event_type == "damage_applied"
+        and event.actor_id == "top_ally"
+        and event.payload["requested"] == 2
+    )
+    global_targets = [
+        event.target_id
+        for event in replay.events
+        if event.event_type == "damage_applied"
+        and event.actor_id == "top_ally"
+        and event.action_index == adjacent_damage.action_index
+    ]
+
+    assert adjacent_damage.target_id == "mid_enemy"
+    assert "enemy_nexus" not in global_targets
+
+
+def test_m3_respawn_waits_are_counted_on_own_action_opportunities() -> None:
+    replay = BattleEngine().simulate(
+        m3_scenario(
+            m3_lane_participants(
+                top_ally_deck=[m3_damage_card("card_defeat_top_enemy", 1000)],
+                mid_ally_deck=[
+                    m3_damage_card("card_mid_1", 1000),
+                    m3_damage_card("card_mid_2", 1000),
+                    m3_damage_card("card_mid_3", 1000),
+                ],
+            ),
+            max_actions=20,
+            rule_config=BattleRuleConfig(nexus_max_hp=1, respawn_skip_turns=2),
+        )
+    )
+
+    waits = [
+        event
+        for event in replay.events
+        if event.event_type == "respawn_waited" and event.actor_id == "top_enemy"
+    ]
+
+    assert [event.payload["before"] for event in waits[:2]] == [2, 1]
+
+
+def test_m3_nexus_destroyed_completes_after_action_completed() -> None:
+    replay = BattleEngine().simulate(
+        m3_scenario(
+            m3_lane_participants(
+                top_ally_deck=[m3_damage_card("card_break_nexus", 1000)],
+                mid_ally_deck=[
+                    m3_damage_card("card_mid_1", 1000),
+                    m3_damage_card("card_mid_2", 1000),
+                    m3_damage_card("card_mid_3", 1000),
+                ],
+            ),
+            rule_config=BattleRuleConfig(nexus_max_hp=1),
+        )
+    )
+
+    event_types = [event.event_type for event in replay.events]
+    assert replay.summary.result == "ally_win"
+    assert replay.summary.end_reason == "nexus_destroyed"
+    assert "nexus_damaged" in event_types
+    assert event_types.index("action_completed", event_types.index("nexus_damaged")) < (
+        event_types.index("battle_completed")
+    )
+
+
+def test_m3_safety_limit_is_error_not_draw() -> None:
+    with pytest.raises(BattleScenarioError, match="simulation_safety_limit"):
+        BattleEngine().simulate(
+            m3_scenario(
+                m3_lane_participants(
+                    top_ally_deck=[m3_damage_card("card_hold", 1, mp_cost=99)],
+                    mid_ally_deck=[m3_damage_card("card_hold_mid", 1, mp_cost=99)],
+                ),
+                max_actions=2,
+            )
+        )

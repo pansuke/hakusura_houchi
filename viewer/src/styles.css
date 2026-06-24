@@ -143,8 +143,58 @@ input {
 
 .combatants {
   display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.nexus-row {
+  display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+}
+
+.nexus-card {
+  display: grid;
+  gap: 6px;
+  border: 1px solid rgba(142, 230, 164, 0.28);
+  border-radius: 8px;
+  padding: 14px;
+  background: rgba(142, 230, 164, 0.08);
+}
+
+.nexus-card strong {
+  color: #ffffff;
+  font-size: 1.15rem;
+}
+
+.nexus-card span {
+  color: #d8d2c3;
+  font-weight: 700;
+}
+
+.rule-config-panel {
+  border: 1px solid rgba(244, 241, 232, 0.16);
+  border-radius: 8px;
+  padding: 12px;
+  background: rgba(244, 241, 232, 0.05);
+}
+
+.rule-config-panel summary {
+  cursor: pointer;
+  color: #e1b45f;
+  font-weight: 900;
+}
+
+.rule-config-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.rule-config-grid label {
+  display: grid;
+  align-items: start;
 }
 
 .action-summary {
@@ -519,6 +569,8 @@ dd {
   }
 
   .panel-header,
+  .nexus-row,
+  .rule-config-grid,
   .combatants {
     grid-template-columns: 1fr;
   }

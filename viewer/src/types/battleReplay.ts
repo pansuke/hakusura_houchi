@@ -6,6 +6,7 @@ export type BattleEvent = {
   actor_id: string | null
   target_id: string | null
   payload: Record<string, unknown>
+  lane_id?: 'top' | 'mid' | 'bot' | null
 }
 
 export type ParticipantSnapshot = {
@@ -24,6 +25,33 @@ export type ParticipantSnapshot = {
   hand: string[]
   draw_pile: string[]
   discard_pile: string[]
+  lane_id?: 'top' | 'mid' | 'bot' | null
+  position?: number | null
+  push?: number | null
+  engaged_with_participant_id?: string | null
+  respawn_turns_remaining?: number | null
+}
+
+export type NexusSnapshot = {
+  side: 'ally' | 'enemy'
+  hp: number
+  max_hp: number
+  ar: number
+  mr: number
+}
+
+export type BattleRuleConfig = {
+  initial_hand_size: number
+  max_hand_size: number
+  draw_gauge_threshold: number
+  respawn_skip_turns: number
+  ally_nexus_position: number
+  enemy_nexus_position: number
+  initial_position: number
+  nexus_max_hp: number
+  nexus_ar: number
+  nexus_mr: number
+  defense_constant: number
 }
 
 export type BattleSnapshot = {
@@ -33,6 +61,8 @@ export type BattleSnapshot = {
   acted_actor_id: string | null
   next_actor_id: string | null
   participants: Record<string, ParticipantSnapshot>
+  nexus_states?: Record<string, NexusSnapshot>
+  applied_rule_config?: BattleRuleConfig | null
 }
 
 export type BattleReplay = {
@@ -55,12 +85,17 @@ export type BattleEffectRequest = {
   effect_type: 'damage' | 'heal' | 'gain_mana' | 'draw_card'
   target: 'self' | 'enemy'
   value: number
+  scope?: 'local' | 'adjacent' | 'global'
+  damage_type?: 'physical' | 'magic' | 'true'
+  base_damage?: number | null
+  scaling?: Record<string, number>[]
 }
 
 export type BattleCardRequest = {
   card_id: string
   mp_cost: number
   effects: BattleEffectRequest[]
+  consumes_action?: boolean
 }
 
 export type BattleParticipantRequest = {
@@ -75,6 +110,12 @@ export type BattleParticipantRequest = {
   mpr: number
   hpr: number
   deck: BattleCardRequest[]
+  lane_id?: 'top' | 'mid' | 'bot' | null
+  ad?: number
+  ap?: number
+  ar?: number
+  mr?: number
+  push?: number
 }
 
 export type BattleScenarioRequest = {
@@ -83,4 +124,5 @@ export type BattleScenarioRequest = {
   turn_order: string[]
   max_actions: number
   seed: number
+  rule_config?: BattleRuleConfig
 }

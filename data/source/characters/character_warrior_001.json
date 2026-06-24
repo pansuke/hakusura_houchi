@@ -12,5 +12,14 @@
     "mrg": 8,
     "hrg": 2
   },
-  "trait_ids": ["trait_adjacent_splash"]
+  "trait_ids": [
+    "trait_adjacent_splash"
+  ],
+  "combat_stats": {
+    "ad": 12,
+    "ap": 0,
+    "ar": 5,
+    "mr": 3,
+    "push": 100
+  }
 }

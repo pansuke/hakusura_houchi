@@ -1,9 +1,14 @@
 {
   "cards": [
     {
+      "consumes_action": true,
       "effects": [
         {
+          "base_damage": 5,
+          "damage_type": "true",
           "power": 5,
+          "scaling": [],
+          "scope": "local",
           "target": "enemy",
           "type": "damage"
         }
@@ -14,9 +19,14 @@
       "rarity": "common"
     },
     {
+      "consumes_action": true,
       "effects": [
         {
+          "base_damage": 12,
+          "damage_type": "true",
           "power": 12,
+          "scaling": [],
+          "scope": "local",
           "target": "enemy",
           "type": "damage"
         }
@@ -27,9 +37,12 @@
       "rarity": "common"
     },
     {
+      "consumes_action": true,
       "effects": [
         {
           "power": 1,
+          "scaling": [],
+          "scope": "local",
           "target": "self",
           "type": "gain_mana"
         }
@@ -40,9 +53,12 @@
       "rarity": "common"
     },
     {
+      "consumes_action": true,
       "effects": [
         {
           "power": 3,
+          "scaling": [],
+          "scope": "local",
           "target": "self",
           "type": "heal"
         }
@@ -66,6 +82,13 @@
         "mr": 1,
         "mrg": 1
       },
+      "combat_stats": {
+        "ad": 8,
+        "ap": 0,
+        "ar": 2,
+        "mr": 1,
+        "push": 50
+      },
       "id": "character_enemy_001",
       "name": "ゴブリン",
       "trait_ids": []
@@ -81,6 +104,13 @@
         "mp": 20,
         "mr": 3,
         "mrg": 8
+      },
+      "combat_stats": {
+        "ad": 12,
+        "ap": 0,
+        "ar": 5,
+        "mr": 3,
+        "push": 100
       },
       "id": "character_warrior_001",
       "name": "戦士",

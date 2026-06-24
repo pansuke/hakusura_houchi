@@ -22,6 +22,16 @@
     <p v-if="!participant.alive" class="defeated-text">{{ uiLabels.defeated }}</p>
 
     <dl>
+      <div v-if="participant.lane_id"><dt>Lane</dt><dd>{{ participant.lane_id.toUpperCase() }}</dd></div>
+      <div v-if="participant.position !== null && participant.position !== undefined">
+        <dt>Position</dt><dd>{{ participant.position }}</dd>
+      </div>
+      <div v-if="participant.push !== null && participant.push !== undefined">
+        <dt>PUSH</dt><dd>{{ participant.push }}</dd>
+      </div>
+      <div v-if="participant.respawn_turns_remaining !== null && participant.respawn_turns_remaining !== undefined">
+        <dt>復活待ち</dt><dd>{{ participant.respawn_turns_remaining }}</dd>
+      </div>
       <div><dt>{{ uiLabels.hp }}</dt><dd>{{ participant.hp }} / {{ participant.max_hp }}</dd></div>
       <div><dt>{{ uiLabels.mp }}</dt><dd>{{ participant.mp }} / {{ participant.max_mp }}</dd></div>
     </dl>

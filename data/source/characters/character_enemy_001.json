@@ -12,5 +12,12 @@
     "mrg": 1,
     "hrg": 0
   },
-  "trait_ids": []
+  "trait_ids": [],
+  "combat_stats": {
+    "ad": 8,
+    "ap": 0,
+    "ar": 2,
+    "mr": 1,
+    "push": 50
+  }
 }

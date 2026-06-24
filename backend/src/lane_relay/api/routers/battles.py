@@ -15,10 +15,14 @@ from lane_relay.engine.battle_engine import (
     BattleEffect,
     BattleEngine,
     BattleParticipantSetup,
+    BattleRuleConfig,
     BattleScenario,
     BattleScenarioError,
+    DamageType,
+    EffectScope,
     EffectTarget,
     EffectType,
+    LaneId,
     Side,
 )
 
@@ -60,15 +64,26 @@ def to_scenario(request: BattleSimulateRequest) -> BattleScenario:
                 ds=participant.ds,
                 mpr=participant.mpr,
                 hpr=participant.hpr,
+                lane_id=cast(LaneId | None, participant.lane_id),
+                ad=participant.ad,
+                ap=participant.ap,
+                ar=participant.ar,
+                mr=participant.mr,
+                push=participant.push,
                 deck=[
                     BattleCard(
                         card_id=card.card_id,
                         mp_cost=card.mp_cost,
+                        consumes_action=card.consumes_action,
                         effects=[
                             BattleEffect(
                                 effect_type=cast(EffectType, effect.effect_type),
                                 target=cast(EffectTarget, effect.target),
                                 value=effect.value,
+                                scope=cast(EffectScope, effect.scope),
+                                damage_type=cast(DamageType, effect.damage_type),
+                                base_damage=effect.base_damage,
+                                scaling=effect.scaling,
                             )
                             for effect in card.effects
                         ],
@@ -81,6 +96,19 @@ def to_scenario(request: BattleSimulateRequest) -> BattleScenario:
         turn_order=request.turn_order,
         max_actions=request.max_actions,
         seed=request.seed,
+        rule_config=BattleRuleConfig(
+            initial_hand_size=request.rule_config.initial_hand_size,
+            max_hand_size=request.rule_config.max_hand_size,
+            draw_gauge_threshold=request.rule_config.draw_gauge_threshold,
+            respawn_skip_turns=request.rule_config.respawn_skip_turns,
+            ally_nexus_position=request.rule_config.ally_nexus_position,
+            enemy_nexus_position=request.rule_config.enemy_nexus_position,
+            initial_position=request.rule_config.initial_position,
+            nexus_max_hp=request.rule_config.nexus_max_hp,
+            nexus_ar=request.rule_config.nexus_ar,
+            nexus_mr=request.rule_config.nexus_mr,
+            defense_constant=request.rule_config.defense_constant,
+        ),
     )
 
 

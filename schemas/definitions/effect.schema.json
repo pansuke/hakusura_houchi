@@ -17,6 +17,36 @@
     "power": {
       "type": "integer",
       "minimum": 0
+    },
+    "scope": {
+      "type": "string",
+      "enum": ["local", "adjacent", "global"]
+    },
+    "damage_type": {
+      "type": "string",
+      "enum": ["physical", "magic", "true"]
+    },
+    "base_damage": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "scaling": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["stat", "ratio_bp"],
+        "additionalProperties": false,
+        "properties": {
+          "stat": {
+            "type": "string",
+            "enum": ["ad", "ap", "max_hp", "current_hp", "missing_hp"]
+          },
+          "ratio_bp": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
     }
   }
 }

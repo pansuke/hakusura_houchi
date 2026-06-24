@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -8,12 +9,26 @@ BattleStatus = Literal["running", "completed"]
 BattleResult = Literal["undecided", "ally_win", "ally_loss", "draw"]
 EffectType = Literal["damage", "heal", "gain_mana", "draw_card"]
 EffectTarget = Literal["self", "enemy"]
+LaneId = Literal["top", "mid", "bot"]
+DamageType = Literal["physical", "magic", "true"]
+EffectScope = Literal["local", "adjacent", "global"]
 
 GAUGE_THRESHOLD = 100
 HAND_LIMIT = 5
 INITIAL_HAND_SIZE = 3
+M3_LANE_ORDER: tuple[LaneId, ...] = ("top", "mid", "bot")
+M3_TURN_SLOTS: tuple[tuple[LaneId, Side], ...] = (
+    ("top", "ally"),
+    ("top", "enemy"),
+    ("mid", "ally"),
+    ("mid", "enemy"),
+    ("bot", "ally"),
+    ("bot", "enemy"),
+)
 ALLOWED_EFFECT_TYPES: set[str] = {"damage", "heal", "gain_mana", "draw_card"}
 ALLOWED_EFFECT_TARGETS: set[str] = {"self", "enemy"}
+ALLOWED_EFFECT_SCOPES: set[str] = {"local", "adjacent", "global"}
+ALLOWED_DAMAGE_TYPES: set[str] = {"physical", "magic", "true"}
 
 
 class BattleScenarioError(ValueError):
@@ -25,6 +40,10 @@ class BattleEffect:
     effect_type: EffectType
     target: EffectTarget
     value: int
+    scope: EffectScope = "local"
+    damage_type: DamageType = "true"
+    base_damage: int | None = None
+    scaling: list[dict[str, int]] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -32,6 +51,7 @@ class BattleCard:
     card_id: str
     mp_cost: int
     effects: list[BattleEffect]
+    consumes_action: bool = True
 
 
 @dataclass(frozen=True)
@@ -47,6 +67,27 @@ class BattleParticipantSetup:
     mpr: int
     hpr: int
     deck: list[BattleCard]
+    lane_id: LaneId | None = None
+    ad: int = 0
+    ap: int = 0
+    ar: int = 0
+    mr: int = 0
+    push: int = 0
+
+
+@dataclass(frozen=True)
+class BattleRuleConfig:
+    initial_hand_size: int = 3
+    max_hand_size: int = 7
+    draw_gauge_threshold: int = 100
+    respawn_skip_turns: int = 3
+    ally_nexus_position: int = -1000
+    enemy_nexus_position: int = 1000
+    initial_position: int = 0
+    nexus_max_hp: int = 8000
+    nexus_ar: int = 0
+    nexus_mr: int = 0
+    defense_constant: int = 100
 
 
 @dataclass(frozen=True)
@@ -56,6 +97,7 @@ class BattleScenario:
     turn_order: list[str]
     max_actions: int = 1000
     seed: int = 0
+    rule_config: BattleRuleConfig = field(default_factory=BattleRuleConfig)
 
 
 @dataclass(frozen=True)
@@ -67,6 +109,7 @@ class BattleEvent:
     actor_id: str | None
     target_id: str | None
     payload: dict[str, object]
+    lane_id: LaneId | None = None
 
 
 @dataclass(frozen=True)
@@ -86,6 +129,20 @@ class ParticipantSnapshot:
     hand: list[str]
     draw_pile: list[str]
     discard_pile: list[str]
+    lane_id: LaneId | None = None
+    position: int | None = None
+    push: int | None = None
+    engaged_with_participant_id: str | None = None
+    respawn_turns_remaining: int | None = None
+
+
+@dataclass(frozen=True)
+class NexusSnapshot:
+    side: Side
+    hp: int
+    max_hp: int
+    ar: int
+    mr: int
 
 
 @dataclass(frozen=True)
@@ -96,6 +153,8 @@ class BattleSnapshot:
     acted_actor_id: str | None
     next_actor_id: str | None
     participants: dict[str, ParticipantSnapshot]
+    nexus_states: dict[str, NexusSnapshot] = field(default_factory=dict)
+    applied_rule_config: BattleRuleConfig | None = None
 
 
 @dataclass(frozen=True)
@@ -144,6 +203,11 @@ class ParticipantRuntime:
     damage_dealt: int = 0
     damage_taken: int = 0
     cards_used: int = 0
+    lane_id: LaneId | None = None
+    position: int | None = None
+    engaged_with_participant_id: str | None = None
+    respawn_turns_remaining: int | None = None
+    shuffle_count: int = 0
 
 
 @dataclass
@@ -155,6 +219,8 @@ class BattleRuntime:
     battle_status: BattleStatus = "running"
     battle_result: BattleResult = "undecided"
     end_reason: str = "running"
+    nexus_states: dict[str, NexusSnapshot] = field(default_factory=dict)
+    rule_config: BattleRuleConfig | None = None
 
 
 class EventRecorder:
@@ -170,6 +236,7 @@ class EventRecorder:
         actor_id: str | None = None,
         target_id: str | None = None,
         payload: dict[str, object] | None = None,
+        lane_id: LaneId | None = None,
     ) -> None:
         sequence = self._sequence_by_action.get(action_index, 0) + 1
         self._sequence_by_action[action_index] = sequence
@@ -182,6 +249,7 @@ class EventRecorder:
                 actor_id=actor_id,
                 target_id=target_id,
                 payload=payload or {},
+                lane_id=lane_id,
             )
         )
         self._next_event_id += 1
@@ -189,6 +257,8 @@ class EventRecorder:
 
 class BattleEngine:
     def simulate(self, scenario: BattleScenario) -> BattleReplay:
+        if self._is_m3_scenario(scenario):
+            return self._simulate_m3(scenario)
         self._validate_scenario(scenario)
         runtime = self._create_runtime(scenario)
         recorder = EventRecorder()
@@ -223,9 +293,17 @@ class BattleEngine:
             display_catalog=self._display_catalog(scenario),
         )
 
+    def _is_m3_scenario(self, scenario: BattleScenario) -> bool:
+        return len(scenario.participants) == 6 or any(
+            participant.lane_id is not None for participant in scenario.participants
+        )
+
     def _validate_scenario(self, scenario: BattleScenario) -> None:
         if scenario.max_actions < 1:
             raise BattleScenarioError("max_actions must be greater than or equal to 1.")
+        if self._is_m3_scenario(scenario):
+            self._validate_m3_scenario(scenario)
+            return
         if len(scenario.participants) != 2:
             raise BattleScenarioError("M1 scenario must have exactly two participants.")
         participant_ids = [participant.participant_id for participant in scenario.participants]
@@ -269,6 +347,887 @@ class BattleEngine:
                         raise BattleScenarioError(
                             "effect value must be greater than or equal to 0."
                         )
+                    if effect.scope not in ALLOWED_EFFECT_SCOPES:
+                        raise BattleScenarioError("effect scope must be supported.")
+                    if effect.damage_type not in ALLOWED_DAMAGE_TYPES:
+                        raise BattleScenarioError("damage_type must be supported.")
+                    if effect.base_damage is not None and effect.base_damage < 0:
+                        raise BattleScenarioError(
+                            "base_damage must be greater than or equal to 0."
+                        )
+
+    def _validate_m3_scenario(self, scenario: BattleScenario) -> None:
+        if len(scenario.participants) != 6:
+            raise BattleScenarioError("M3 scenario must have exactly six participants.")
+        participant_ids = [participant.participant_id for participant in scenario.participants]
+        if len(set(participant_ids)) != 6:
+            raise BattleScenarioError("participant_id must be unique.")
+        by_slot = {
+            (participant.lane_id, participant.side): participant
+            for participant in scenario.participants
+        }
+        expected_slots = set(M3_TURN_SLOTS)
+        if set(by_slot) != expected_slots:
+            raise BattleScenarioError("M3 scenario must contain ally and enemy for top/mid/bot.")
+        expected_turn_order = [
+            by_slot[(lane_id, side)].participant_id for lane_id, side in M3_TURN_SLOTS
+        ]
+        if scenario.turn_order != expected_turn_order:
+            raise BattleScenarioError(
+                "M3 turn_order must be top ally, top enemy, "
+                "mid ally, mid enemy, bot ally, bot enemy."
+            )
+        config = scenario.rule_config
+        if config.initial_hand_size < 0 or config.max_hand_size < config.initial_hand_size:
+            raise BattleScenarioError("invalid hand size rule config.")
+        if config.draw_gauge_threshold < 1:
+            raise BattleScenarioError("draw_gauge_threshold must be greater than 0.")
+        if config.respawn_skip_turns < 0:
+            raise BattleScenarioError("respawn_skip_turns must be greater than or equal to 0.")
+        if config.nexus_max_hp < 1:
+            raise BattleScenarioError("nexus_max_hp must be greater than 0.")
+        if config.defense_constant < 1:
+            raise BattleScenarioError("defense_constant must be greater than 0.")
+        for participant in scenario.participants:
+            if not participant.deck:
+                raise BattleScenarioError("deck must not be empty.")
+            if participant.initial_hp < 1 or participant.initial_hp > participant.max_hp:
+                raise BattleScenarioError("initial_hp must be between 1 and max_hp.")
+            if participant.initial_mp < 0 or participant.initial_mp > participant.max_mp:
+                raise BattleScenarioError("initial_mp must be between 0 and max_mp.")
+            combat_stats = (
+                participant.ds,
+                participant.mpr,
+                participant.hpr,
+                participant.ad,
+                participant.ap,
+                participant.ar,
+                participant.mr,
+                participant.push,
+            )
+            if min(combat_stats) < 0:
+                raise BattleScenarioError("combat stats must be greater than or equal to 0.")
+            for card in participant.deck:
+                if card.mp_cost < 0:
+                    raise BattleScenarioError("card mp_cost must be greater than or equal to 0.")
+                if not card.effects:
+                    raise BattleScenarioError("card effects must not be empty.")
+                for effect in card.effects:
+                    if effect.effect_type not in ALLOWED_EFFECT_TYPES:
+                        raise BattleScenarioError("effect_type must be supported.")
+                    if effect.target not in ALLOWED_EFFECT_TARGETS:
+                        raise BattleScenarioError("effect target must be supported.")
+                    if effect.scope not in ALLOWED_EFFECT_SCOPES:
+                        raise BattleScenarioError("effect scope must be supported.")
+                    if effect.damage_type not in ALLOWED_DAMAGE_TYPES:
+                        raise BattleScenarioError("damage_type must be supported.")
+                    if effect.value < 0:
+                        raise BattleScenarioError(
+                            "effect value must be greater than or equal to 0."
+                        )
+                    if effect.base_damage is not None and effect.base_damage < 0:
+                        raise BattleScenarioError(
+                            "base_damage must be greater than or equal to 0."
+                        )
+                    if effect.target == "self" and effect.scope != "local":
+                        raise BattleScenarioError("self target effects must use local scope.")
+
+    def _simulate_m3(self, scenario: BattleScenario) -> BattleReplay:
+        self._validate_m3_scenario(scenario)
+        runtime = self._create_m3_runtime(scenario)
+        recorder = EventRecorder()
+        snapshots = [self._snapshot(runtime, acted_actor_id=None)]
+        recorder.record(
+            action_index=0,
+            event_type="battle_started",
+            payload={
+                "battle_id": scenario.battle_id,
+                "seed": scenario.seed,
+                "rule_config": self._rule_config_payload(scenario.rule_config),
+            },
+        )
+
+        while runtime.battle_status == "running":
+            if runtime.action_index >= scenario.max_actions:
+                raise BattleScenarioError("simulation_safety_limit reached.")
+            actor_id = scenario.turn_order[runtime.current_turn_index]
+            runtime.action_index += 1
+            self._run_m3_action(runtime, recorder, actor_id)
+            snapshots.append(self._snapshot(runtime, acted_actor_id=actor_id))
+            if runtime.battle_status == "running":
+                runtime.current_turn_index = (runtime.current_turn_index + 1) % len(
+                    scenario.turn_order
+                )
+
+        return BattleReplay(
+            events=recorder.events,
+            snapshots=snapshots,
+            summary=self._summary(runtime, recorder, snapshots),
+            display_catalog=self._display_catalog(scenario),
+        )
+
+    def _rule_config_payload(self, config: BattleRuleConfig) -> dict[str, int]:
+        return {
+            "initial_hand_size": config.initial_hand_size,
+            "max_hand_size": config.max_hand_size,
+            "draw_gauge_threshold": config.draw_gauge_threshold,
+            "respawn_skip_turns": config.respawn_skip_turns,
+            "ally_nexus_position": config.ally_nexus_position,
+            "enemy_nexus_position": config.enemy_nexus_position,
+            "initial_position": config.initial_position,
+            "nexus_max_hp": config.nexus_max_hp,
+            "nexus_ar": config.nexus_ar,
+            "nexus_mr": config.nexus_mr,
+            "defense_constant": config.defense_constant,
+        }
+
+    def _create_m3_runtime(self, scenario: BattleScenario) -> BattleRuntime:
+        config = scenario.rule_config
+        participants: dict[str, ParticipantRuntime] = {}
+        for setup in scenario.participants:
+            runtime = ParticipantRuntime(
+                setup=setup,
+                hp=setup.initial_hp,
+                mp=setup.initial_mp,
+                alive=True,
+                lane_id=setup.lane_id,
+                position=config.initial_position,
+                engaged_with_participant_id=None,
+                respawn_turns_remaining=None,
+            )
+            self._initialize_m3_deck(runtime, scenario.seed, config)
+            participants[setup.participant_id] = runtime
+        runtime = BattleRuntime(
+            scenario=scenario,
+            participants=participants,
+            nexus_states={
+                "ally": NexusSnapshot(
+                    side="ally",
+                    hp=config.nexus_max_hp,
+                    max_hp=config.nexus_max_hp,
+                    ar=config.nexus_ar,
+                    mr=config.nexus_mr,
+                ),
+                "enemy": NexusSnapshot(
+                    side="enemy",
+                    hp=config.nexus_max_hp,
+                    max_hp=config.nexus_max_hp,
+                    ar=config.nexus_ar,
+                    mr=config.nexus_mr,
+                ),
+            },
+            rule_config=config,
+        )
+        for lane_id in M3_LANE_ORDER:
+            ally = self._participant_in_slot(runtime, lane_id, "ally")
+            enemy = self._participant_in_slot(runtime, lane_id, "enemy")
+            ally.engaged_with_participant_id = enemy.setup.participant_id
+            enemy.engaged_with_participant_id = ally.setup.participant_id
+        return runtime
+
+    def _initialize_m3_deck(
+        self,
+        participant: ParticipantRuntime,
+        seed: int,
+        config: BattleRuleConfig,
+    ) -> None:
+        cards = list(participant.setup.deck)
+        rng = random.Random(
+            f"{seed}:deck:{participant.setup.participant_id}:{participant.shuffle_count}"
+        )
+        rng.shuffle(cards)
+        participant.hand = cards[: config.initial_hand_size]
+        participant.draw_pile = cards[config.initial_hand_size :]
+        participant.discard_pile = []
+        participant.draw_gauge = 0
+        participant.shuffle_count += 1
+
+    def _run_m3_action(
+        self,
+        runtime: BattleRuntime,
+        recorder: EventRecorder,
+        actor_id: str,
+    ) -> None:
+        actor = runtime.participants[actor_id]
+        lane_id = actor.lane_id
+        recorder.record(
+            runtime.action_index,
+            "action_started",
+            actor_id=actor_id,
+            lane_id=lane_id,
+        )
+        if not actor.alive:
+            if actor.respawn_turns_remaining and actor.respawn_turns_remaining > 0:
+                before = actor.respawn_turns_remaining
+                actor.respawn_turns_remaining -= 1
+                recorder.record(
+                    runtime.action_index,
+                    "respawn_waited",
+                    actor_id=actor_id,
+                    lane_id=lane_id,
+                    payload={
+                        "before": before,
+                        "after": actor.respawn_turns_remaining,
+                    },
+                )
+                self._record_m3_action_completed(runtime, recorder, actor)
+                return
+            self._respawn_m3(runtime, recorder, actor)
+
+        can_act = self._move_and_resolve_engagement(runtime, recorder, actor)
+        if can_act:
+            self._apply_action_right_recovery(runtime, recorder, actor)
+            self._increase_m3_draw_gauge(runtime, recorder, actor)
+            self._attempt_m3_cards(runtime, recorder, actor)
+        else:
+            recorder.record(
+                runtime.action_index,
+                "target_selection_failed",
+                actor_id=actor_id,
+                lane_id=lane_id,
+                payload={"reason": "no_local_target_or_nexus"},
+            )
+        self._record_m3_action_completed(runtime, recorder, actor)
+
+    def _record_m3_action_completed(
+        self,
+        runtime: BattleRuntime,
+        recorder: EventRecorder,
+        actor: ParticipantRuntime,
+    ) -> None:
+        recorder.record(
+            runtime.action_index,
+            "action_completed",
+            actor_id=actor.setup.participant_id,
+            lane_id=actor.lane_id,
+            payload={
+                "acted_actor_id": actor.setup.participant_id,
+                "next_actor_id": None
+                if runtime.battle_status == "completed"
+                else self._peek_m3_next_actor_id(runtime),
+                "battle_status": runtime.battle_status,
+            },
+        )
+        if runtime.battle_status == "completed":
+            self._record_battle_completed(runtime, recorder)
+
+    def _respawn_m3(
+        self,
+        runtime: BattleRuntime,
+        recorder: EventRecorder,
+        actor: ParticipantRuntime,
+    ) -> None:
+        config = runtime.scenario.rule_config
+        actor.alive = True
+        actor.defeated_event_emitted = False
+        actor.hp = actor.setup.max_hp
+        actor.mp = actor.setup.max_mp
+        actor.position = (
+            config.ally_nexus_position
+            if actor.setup.side == "ally"
+            else config.enemy_nexus_position
+        )
+        actor.engaged_with_participant_id = None
+        actor.respawn_turns_remaining = None
+        self._initialize_m3_deck(actor, runtime.scenario.seed, config)
+        recorder.record(
+            runtime.action_index,
+            "deck_shuffled",
+            actor_id=actor.setup.participant_id,
+            lane_id=actor.lane_id,
+            payload={"reason": "respawn", "shuffle_count": actor.shuffle_count},
+        )
+        recorder.record(
+            runtime.action_index,
+            "character_respawned",
+            actor_id=actor.setup.participant_id,
+            lane_id=actor.lane_id,
+            payload={
+                "hp": actor.hp,
+                "mp": actor.mp,
+                "position": actor.position,
+            },
+        )
+
+    def _move_and_resolve_engagement(
+        self,
+        runtime: BattleRuntime,
+        recorder: EventRecorder,
+        actor: ParticipantRuntime,
+    ) -> bool:
+        opponent = self._lane_opponent(runtime, actor)
+        if opponent is None or not opponent.alive:
+            self._clear_engagement(actor, opponent)
+            self._move_without_opponent(runtime, recorder, actor)
+            return self._at_enemy_nexus(runtime, actor)
+        if actor.position == opponent.position:
+            actor.engaged_with_participant_id = opponent.setup.participant_id
+            opponent.engaged_with_participant_id = actor.setup.participant_id
+            self._push_engaged_pair(runtime, recorder, actor, opponent)
+            return True
+        self._move_toward_opponent(runtime, recorder, actor, opponent)
+        return actor.position == opponent.position
+
+    def _move_without_opponent(
+        self,
+        runtime: BattleRuntime,
+        recorder: EventRecorder,
+        actor: ParticipantRuntime,
+    ) -> None:
+        before = actor.position or 0
+        direction = self._direction(actor)
+        target_position = self._enemy_nexus_position(runtime, actor)
+        after = self._clamp_position(runtime, before + direction * actor.setup.push)
+        if direction > 0:
+            after = min(after, target_position)
+        else:
+            after = max(after, target_position)
+        actor.position = after
+        if before != after:
+            recorder.record(
+                runtime.action_index,
+                "lane_moved",
+                actor_id=actor.setup.participant_id,
+                lane_id=actor.lane_id,
+                payload={"before": before, "after": after, "mode": "unopposed"},
+            )
+
+    def _move_toward_opponent(
+        self,
+        runtime: BattleRuntime,
+        recorder: EventRecorder,
+        actor: ParticipantRuntime,
+        opponent: ParticipantRuntime,
+    ) -> None:
+        before = actor.position or 0
+        direction = self._direction(actor)
+        target_position = opponent.position or 0
+        after = before + direction * actor.setup.push
+        if direction > 0:
+            after = min(after, target_position)
+        else:
+            after = max(after, target_position)
+        actor.position = after
+        if before != after:
+            recorder.record(
+                runtime.action_index,
+                "lane_moved",
+                actor_id=actor.setup.participant_id,
+                target_id=opponent.setup.participant_id,
+                lane_id=actor.lane_id,
+                payload={"before": before, "after": after, "mode": "approach"},
+            )
+        if actor.position == opponent.position:
+            actor.engaged_with_participant_id = opponent.setup.participant_id
+            opponent.engaged_with_participant_id = actor.setup.participant_id
+            recorder.record(
+                runtime.action_index,
+                "engagement_started",
+                actor_id=actor.setup.participant_id,
+                target_id=opponent.setup.participant_id,
+                lane_id=actor.lane_id,
+                payload={"position": actor.position or 0},
+            )
+
+    def _push_engaged_pair(
+        self,
+        runtime: BattleRuntime,
+        recorder: EventRecorder,
+        actor: ParticipantRuntime,
+        opponent: ParticipantRuntime,
+    ) -> None:
+        advance = max(0, actor.setup.push - opponent.setup.push)
+        if advance == 0:
+            return
+        before = actor.position or 0
+        after = self._clamp_position(runtime, before + self._direction(actor) * advance)
+        actor.position = after
+        opponent.position = after
+        recorder.record(
+            runtime.action_index,
+            "lane_moved",
+            actor_id=actor.setup.participant_id,
+            target_id=opponent.setup.participant_id,
+            lane_id=actor.lane_id,
+            payload={"before": before, "after": after, "mode": "push", "advance": advance},
+        )
+
+    def _increase_m3_draw_gauge(
+        self,
+        runtime: BattleRuntime,
+        recorder: EventRecorder,
+        participant: ParticipantRuntime,
+    ) -> None:
+        config = runtime.scenario.rule_config
+        before = participant.draw_gauge
+        participant.draw_gauge += participant.setup.ds
+        trigger_count = participant.draw_gauge // config.draw_gauge_threshold
+        participant.draw_gauge %= config.draw_gauge_threshold
+        recorder.record(
+            runtime.action_index,
+            "gauge_changed",
+            actor_id=participant.setup.participant_id,
+            lane_id=participant.lane_id,
+            payload={
+                "gauge_type": "draw",
+                "before": before,
+                "gain": participant.setup.ds,
+                "trigger_count": trigger_count,
+                "after": participant.draw_gauge,
+                "blocked_reason": None,
+            },
+        )
+        for _draw_index in range(trigger_count):
+            self._draw_one_m3(runtime, recorder, participant, draw_source="draw_gauge")
+
+    def _draw_one_m3(
+        self,
+        runtime: BattleRuntime,
+        recorder: EventRecorder,
+        participant: ParticipantRuntime,
+        draw_source: str,
+    ) -> None:
+        config = runtime.scenario.rule_config
+        if not participant.draw_pile and participant.discard_pile:
+            rng = random.Random(
+                f"{runtime.scenario.seed}:recycle:{participant.setup.participant_id}:{participant.shuffle_count}"
+            )
+            participant.draw_pile = list(participant.discard_pile)
+            rng.shuffle(participant.draw_pile)
+            participant.discard_pile.clear()
+            participant.shuffle_count += 1
+            recorder.record(
+                runtime.action_index,
+                "discard_recycled",
+                actor_id=participant.setup.participant_id,
+                lane_id=participant.lane_id,
+                payload={"shuffle_count": participant.shuffle_count},
+            )
+        if not participant.draw_pile:
+            recorder.record(
+                runtime.action_index,
+                "card_draw_blocked",
+                actor_id=participant.setup.participant_id,
+                lane_id=participant.lane_id,
+                payload={
+                    "blocked_reason": "empty_deck",
+                    "draw_source": draw_source,
+                    "hand_size": len(participant.hand),
+                },
+            )
+            return
+        if len(participant.hand) >= config.max_hand_size:
+            discarded = participant.hand.pop(0)
+            participant.discard_pile.append(discarded)
+            recorder.record(
+                runtime.action_index,
+                "card_overflow_discarded",
+                actor_id=participant.setup.participant_id,
+                lane_id=participant.lane_id,
+                payload={"card_id": discarded.card_id, "hand_limit": config.max_hand_size},
+            )
+        hand_size_before = len(participant.hand)
+        card = participant.draw_pile.pop(0)
+        participant.hand.append(card)
+        recorder.record(
+            runtime.action_index,
+            "card_drawn",
+            actor_id=participant.setup.participant_id,
+            lane_id=participant.lane_id,
+            payload={
+                "card_id": card.card_id,
+                "reason": draw_source,
+                "draw_source": draw_source,
+                "hand_size_before": hand_size_before,
+                "hand_size_after": len(participant.hand),
+            },
+        )
+
+    def _attempt_m3_cards(
+        self,
+        runtime: BattleRuntime,
+        recorder: EventRecorder,
+        actor: ParticipantRuntime,
+    ) -> None:
+        while actor.hand and runtime.battle_status == "running":
+            card = actor.hand[0]
+            targets = self._m3_targets_for_card(runtime, recorder, actor, card)
+            playable = bool(targets) and actor.mp >= card.mp_cost
+            primary_target_id = self._target_id_for_payload(targets[0]) if targets else None
+            recorder.record(
+                runtime.action_index,
+                "card_attempted",
+                actor_id=actor.setup.participant_id,
+                target_id=primary_target_id,
+                lane_id=actor.lane_id,
+                payload={
+                    "card_id": card.card_id,
+                    "required_mp": card.mp_cost,
+                    "current_mp": actor.mp,
+                    "playable": playable,
+                },
+            )
+            if not playable:
+                reason = "no_valid_target" if not targets else "insufficient_mana"
+                recorder.record(
+                    runtime.action_index,
+                    "card_held",
+                    actor_id=actor.setup.participant_id,
+                    target_id=primary_target_id,
+                    lane_id=actor.lane_id,
+                    payload={
+                        "card_id": card.card_id,
+                        "reason": reason,
+                        "required_mp": card.mp_cost,
+                        "current_mp": actor.mp,
+                    },
+                )
+                return
+            self._use_m3_card(runtime, recorder, actor, card, targets)
+            if card.consumes_action:
+                return
+
+    def _use_m3_card(
+        self,
+        runtime: BattleRuntime,
+        recorder: EventRecorder,
+        actor: ParticipantRuntime,
+        card: BattleCard,
+        targets: list[ParticipantRuntime | str],
+    ) -> None:
+        actor.hand.pop(0)
+        actor.cards_used += 1
+        if card.mp_cost:
+            before_mp = actor.mp
+            actor.mp -= card.mp_cost
+            recorder.record(
+                runtime.action_index,
+                "mana_spent",
+                actor_id=actor.setup.participant_id,
+                lane_id=actor.lane_id,
+                payload={
+                    "card_id": card.card_id,
+                    "before": before_mp,
+                    "amount": card.mp_cost,
+                    "after": actor.mp,
+                },
+            )
+        recorder.record(
+            runtime.action_index,
+            "card_used",
+            actor_id=actor.setup.participant_id,
+            target_id=self._target_id_for_payload(targets[0]) if targets else None,
+            lane_id=actor.lane_id,
+            payload={"card_id": card.card_id, "consumes_action": card.consumes_action},
+        )
+        for effect in card.effects:
+            effect_targets = self._m3_targets_for_effect(runtime, recorder, actor, effect)
+            for target in effect_targets:
+                self._resolve_m3_effect(runtime, recorder, actor, target, effect)
+                if runtime.battle_status == "completed":
+                    break
+            if runtime.battle_status == "completed":
+                break
+        actor.discard_pile.append(card)
+
+    def _resolve_m3_effect(
+        self,
+        runtime: BattleRuntime,
+        recorder: EventRecorder,
+        actor: ParticipantRuntime,
+        target: ParticipantRuntime | str,
+        effect: BattleEffect,
+    ) -> None:
+        if effect.effect_type == "damage":
+            self._damage_m3(runtime, recorder, actor, target, effect)
+        elif isinstance(target, ParticipantRuntime) and effect.effect_type == "heal":
+            self._heal(runtime, recorder, actor, target, effect.value, reason="card_effect")
+        elif isinstance(target, ParticipantRuntime) and effect.effect_type == "gain_mana":
+            self._gain_mana(runtime, recorder, target, effect.value, reason="card_effect")
+        elif isinstance(target, ParticipantRuntime) and effect.effect_type == "draw_card":
+            for _draw_index in range(effect.value):
+                self._draw_one_m3(runtime, recorder, target, draw_source="card_effect")
+
+    def _damage_m3(
+        self,
+        runtime: BattleRuntime,
+        recorder: EventRecorder,
+        actor: ParticipantRuntime,
+        target: ParticipantRuntime | str,
+        effect: BattleEffect,
+    ) -> None:
+        requested = self._calculate_m3_damage(runtime, actor, target, effect)
+        if isinstance(target, ParticipantRuntime):
+            before = target.hp
+            target.hp = max(0, target.hp - requested)
+            applied = before - target.hp
+            actor.damage_dealt += applied
+            target.damage_taken += applied
+            if target.hp == 0:
+                target.alive = False
+                target.respawn_turns_remaining = runtime.scenario.rule_config.respawn_skip_turns
+                self._clear_engagement(target, actor)
+            recorder.record(
+                runtime.action_index,
+                "damage_applied",
+                actor_id=actor.setup.participant_id,
+                target_id=target.setup.participant_id,
+                lane_id=actor.lane_id,
+                payload={
+                    "before": before,
+                    "requested": requested,
+                    "applied": applied,
+                    "after": target.hp,
+                    "damage_type": effect.damage_type,
+                },
+            )
+            self._emit_defeated_events(runtime, recorder)
+            return
+
+        nexus = runtime.nexus_states[target]
+        before = nexus.hp
+        after = max(0, before - requested)
+        applied = before - after
+        runtime.nexus_states[target] = NexusSnapshot(
+            side=nexus.side,
+            hp=after,
+            max_hp=nexus.max_hp,
+            ar=nexus.ar,
+            mr=nexus.mr,
+        )
+        actor.damage_dealt += applied
+        recorder.record(
+            runtime.action_index,
+            "nexus_damaged",
+            actor_id=actor.setup.participant_id,
+            target_id=f"{target}_nexus",
+            lane_id=actor.lane_id,
+            payload={
+                "side": target,
+                "before": before,
+                "requested": requested,
+                "applied": applied,
+                "after": after,
+                "damage_type": effect.damage_type,
+            },
+        )
+        if after == 0:
+            recorder.record(
+                runtime.action_index,
+                "nexus_destroyed",
+                actor_id=actor.setup.participant_id,
+                target_id=f"{target}_nexus",
+                lane_id=actor.lane_id,
+                payload={"side": target},
+            )
+            result: BattleResult = "ally_win" if target == "enemy" else "ally_loss"
+            self._mark_battle_completed(runtime, result, "nexus_destroyed")
+
+    def _calculate_m3_damage(
+        self,
+        runtime: BattleRuntime,
+        actor: ParticipantRuntime,
+        target: ParticipantRuntime | str,
+        effect: BattleEffect,
+    ) -> int:
+        config = runtime.scenario.rule_config
+        raw_bp = (effect.base_damage if effect.base_damage is not None else effect.value) * 10000
+        for scaling in effect.scaling:
+            stat = scaling.get("stat", "")
+            ratio_bp = scaling.get("ratio_bp", 0)
+            raw_bp += self._m3_stat_value(actor, stat) * ratio_bp
+        if effect.damage_type == "true":
+            final = raw_bp // 10000
+        else:
+            defense = self._m3_defense_value(runtime, target, effect.damage_type)
+            final = raw_bp * config.defense_constant // (
+                10000 * (config.defense_constant + defense)
+            )
+        return max(1, final) if raw_bp > 0 else 0
+
+    def _m3_stat_value(self, actor: ParticipantRuntime, stat: str) -> int:
+        if stat == "ad":
+            return actor.setup.ad
+        if stat == "ap":
+            return actor.setup.ap
+        if stat == "max_hp":
+            return actor.setup.max_hp
+        if stat == "current_hp":
+            return actor.hp
+        if stat == "missing_hp":
+            return actor.setup.max_hp - actor.hp
+        return 0
+
+    def _m3_defense_value(
+        self,
+        runtime: BattleRuntime,
+        target: ParticipantRuntime | str,
+        damage_type: str,
+    ) -> int:
+        if isinstance(target, ParticipantRuntime):
+            return target.setup.ar if damage_type == "physical" else target.setup.mr
+        nexus = runtime.nexus_states[target]
+        return nexus.ar if damage_type == "physical" else nexus.mr
+
+    def _m3_targets_for_card(
+        self,
+        runtime: BattleRuntime,
+        recorder: EventRecorder,
+        actor: ParticipantRuntime,
+        card: BattleCard,
+    ) -> list[ParticipantRuntime | str]:
+        for effect in card.effects:
+            targets = self._m3_targets_for_effect(runtime, recorder, actor, effect)
+            if not targets:
+                return []
+        return self._m3_targets_for_effect(runtime, recorder, actor, card.effects[0])
+
+    def _m3_targets_for_effect(
+        self,
+        runtime: BattleRuntime,
+        recorder: EventRecorder,
+        actor: ParticipantRuntime,
+        effect: BattleEffect,
+    ) -> list[ParticipantRuntime | str]:
+        if effect.target == "self":
+            return [actor] if actor.alive else []
+        if effect.scope == "local":
+            opponent = self._lane_opponent(runtime, actor)
+            if (
+                opponent
+                and opponent.alive
+                and actor.engaged_with_participant_id == opponent.setup.participant_id
+            ):
+                return [opponent]
+            if self._at_enemy_nexus(runtime, actor) and effect.effect_type == "damage":
+                return [self._opposite_side(actor.setup.side)]
+            recorder.record(
+                runtime.action_index,
+                "target_selection_failed",
+                actor_id=actor.setup.participant_id,
+                lane_id=actor.lane_id,
+                payload={"reason": "no_valid_local_target"},
+            )
+            return []
+        if effect.scope == "adjacent":
+            targets = self._adjacent_targets(runtime, actor)
+            if not targets:
+                recorder.record(
+                    runtime.action_index,
+                    "target_selection_failed",
+                    actor_id=actor.setup.participant_id,
+                    lane_id=actor.lane_id,
+                    payload={"reason": "no_valid_adjacent_target"},
+                )
+            return targets[:1]
+        targets = self._global_targets(runtime, actor)
+        if not targets:
+            recorder.record(
+                runtime.action_index,
+                "target_selection_failed",
+                actor_id=actor.setup.participant_id,
+                lane_id=actor.lane_id,
+                payload={"reason": "no_valid_global_target"},
+            )
+        return targets
+
+    def _adjacent_targets(
+        self,
+        runtime: BattleRuntime,
+        actor: ParticipantRuntime,
+    ) -> list[ParticipantRuntime]:
+        lane_id = actor.lane_id
+        lanes: list[LaneId]
+        if lane_id == "top":
+            lanes = ["mid"]
+        elif lane_id == "bot":
+            lanes = ["mid"]
+        else:
+            lanes = ["top", "bot"]
+        candidates = [
+            participant
+            for participant in runtime.participants.values()
+            if participant.lane_id in lanes
+            and participant.setup.side != actor.setup.side
+            and participant.alive
+        ]
+        if lane_id == "mid" and len(candidates) > 1:
+            rng = random.Random(f"{runtime.scenario.seed}:adjacent:{runtime.action_index}")
+            return [rng.choice(candidates)]
+        return candidates
+
+    def _global_targets(
+        self,
+        runtime: BattleRuntime,
+        actor: ParticipantRuntime,
+    ) -> list[ParticipantRuntime]:
+        return [
+            participant
+            for lane_id in M3_LANE_ORDER
+            for participant in runtime.participants.values()
+            if participant.lane_id == lane_id
+            and participant.setup.side != actor.setup.side
+            and participant.alive
+        ]
+
+    def _participant_in_slot(
+        self,
+        runtime: BattleRuntime,
+        lane_id: LaneId,
+        side: Side,
+    ) -> ParticipantRuntime:
+        return next(
+            participant
+            for participant in runtime.participants.values()
+            if participant.lane_id == lane_id and participant.setup.side == side
+        )
+
+    def _lane_opponent(
+        self,
+        runtime: BattleRuntime,
+        actor: ParticipantRuntime,
+    ) -> ParticipantRuntime | None:
+        for participant in runtime.participants.values():
+            if participant.lane_id == actor.lane_id and participant.setup.side != actor.setup.side:
+                return participant
+        return None
+
+    def _direction(self, actor: ParticipantRuntime) -> int:
+        return 1 if actor.setup.side == "ally" else -1
+
+    def _opposite_side(self, side: Side) -> Side:
+        return "enemy" if side == "ally" else "ally"
+
+    def _enemy_nexus_position(self, runtime: BattleRuntime, actor: ParticipantRuntime) -> int:
+        config = runtime.scenario.rule_config
+        if actor.setup.side == "ally":
+            return config.enemy_nexus_position
+        return config.ally_nexus_position
+
+    def _at_enemy_nexus(self, runtime: BattleRuntime, actor: ParticipantRuntime) -> bool:
+        return actor.position == self._enemy_nexus_position(runtime, actor)
+
+    def _clamp_position(self, runtime: BattleRuntime, position: int) -> int:
+        config = runtime.scenario.rule_config
+        return min(max(position, config.ally_nexus_position), config.enemy_nexus_position)
+
+    def _clear_engagement(
+        self,
+        participant: ParticipantRuntime,
+        opponent: ParticipantRuntime | None,
+    ) -> None:
+        participant.engaged_with_participant_id = None
+        if opponent:
+            opponent.engaged_with_participant_id = None
+
+    def _target_id_for_payload(self, target: ParticipantRuntime | str) -> str:
+        if isinstance(target, ParticipantRuntime):
+            return target.setup.participant_id
+        return f"{target}_nexus"
+
+    def _peek_m3_next_actor_id(self, runtime: BattleRuntime) -> str:
+        next_index = (runtime.current_turn_index + 1) % len(runtime.scenario.turn_order)
+        return runtime.scenario.turn_order[next_index]
 
     def _create_runtime(self, scenario: BattleScenario) -> BattleRuntime:
         participants: dict[str, ParticipantRuntime] = {}
@@ -347,6 +1306,7 @@ class BattleEngine:
             runtime.action_index,
             "gauge_changed",
             actor_id=participant.setup.participant_id,
+            lane_id=participant.lane_id,
             payload={
                 "gauge_type": "draw",
                 "before": before,
@@ -571,6 +1531,7 @@ class BattleEngine:
             "mana_recovered",
             actor_id=participant.setup.participant_id,
             target_id=participant.setup.participant_id,
+            lane_id=participant.lane_id,
             payload={
                 "before": before,
                 "requested": amount,
@@ -596,6 +1557,7 @@ class BattleEngine:
             "health_recovered",
             actor_id=actor.setup.participant_id,
             target_id=target.setup.participant_id,
+            lane_id=actor.lane_id,
             payload={
                 "before": before,
                 "requested": amount,
@@ -625,6 +1587,7 @@ class BattleEngine:
             "damage_applied",
             actor_id=actor.setup.participant_id,
             target_id=target.setup.participant_id,
+            lane_id=actor.lane_id,
             payload={
                 "before": before,
                 "requested": amount,
@@ -642,6 +1605,7 @@ class BattleEngine:
                 runtime.action_index,
                 "character_defeated",
                 actor_id=participant.setup.participant_id,
+                lane_id=participant.lane_id,
                 payload={"side": participant.setup.side},
             )
 
@@ -723,9 +1687,16 @@ class BattleEngine:
         return None
 
     def _snapshot(self, runtime: BattleRuntime, acted_actor_id: str | None) -> BattleSnapshot:
-        next_actor_id = (
-            None if runtime.battle_status == "completed" else self._peek_active_actor_id(runtime)
-        )
+        if runtime.battle_status == "completed":
+            next_actor_id = None
+        elif self._is_m3_scenario(runtime.scenario):
+            next_actor_id = (
+                runtime.scenario.turn_order[runtime.current_turn_index]
+                if acted_actor_id is None
+                else self._peek_m3_next_actor_id(runtime)
+            )
+        else:
+            next_actor_id = self._peek_active_actor_id(runtime)
         return BattleSnapshot(
             action_index=runtime.action_index,
             battle_status=runtime.battle_status,
@@ -749,9 +1720,16 @@ class BattleEngine:
                     hand=[card.card_id for card in participant.hand],
                     draw_pile=[card.card_id for card in participant.draw_pile],
                     discard_pile=[card.card_id for card in participant.discard_pile],
+                    lane_id=participant.lane_id,
+                    position=participant.position,
+                    push=participant.setup.push if participant.lane_id else None,
+                    engaged_with_participant_id=participant.engaged_with_participant_id,
+                    respawn_turns_remaining=participant.respawn_turns_remaining,
                 )
                 for participant_id, participant in runtime.participants.items()
             },
+            nexus_states=dict(runtime.nexus_states),
+            applied_rule_config=runtime.rule_config,
         )
 
     def _peek_active_actor_id(self, runtime: BattleRuntime) -> str | None:

@@ -7,7 +7,12 @@
     {
       "type": "damage",
       "target": "enemy",
-      "power": 5
+      "power": 5,
+      "scope": "local",
+      "damage_type": "true",
+      "base_damage": 5,
+      "scaling": []
     }
-  ]
+  ],
+  "consumes_action": true
 }

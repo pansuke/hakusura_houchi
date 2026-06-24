@@ -1,7 +1,7 @@
 # 放置系 × ハクスラ × デッキ構築 RPG
-# 開発方針・WBS v1.2
+# 開発方針・WBS v1.3
 
-更新日: 2026-06-23  
+更新日: 2026-06-24
 対象: プロトタイプ開始からSteam向け製品化判断まで
 
 ---
@@ -87,7 +87,7 @@ Status: Ready
 
 ## M1: 1対1BattleEngine
 
-Status: Ready
+Status: Done
 
 対象:
 
@@ -118,7 +118,7 @@ Status: Ready
 
 ## M2: Replay API・開発Viewer
 
-Status: Ready
+Status: Done
 
 対象:
 
@@ -136,44 +136,49 @@ Status: Ready
 
 ## M3-A: 3レーン・本番戦闘基盤
 
-Status: Decision Gate待ち
+Status: Done
 
-開始前必須:
+通過済みDecision Gate:
 
 - DG-001 本番Action Scheduler
 - DG-002 本番Deck循環
 - DG-003 復活テンポ
+- DG-005 位置・PUSH・対象Scope
 
 対象:
 
 - TOP / MID / BOT
-- 複数participant
-- 本番Action Scheduler
+- Battle全体Action Index
+- 固定レーン巡回Scheduler
+- BattleRuleConfigと開発Viewer設定画面
+- Seed付きDeck shuffle / recycle
+- 初期手札3 / 最大手札7
+- 最古カード優先・手札上限時最古破棄
+- Card `consumes_action`
 - CharacterMaster Schema v2
-- AD / AP / AR / MR
+- AD / AP / AR / MR / PUSH
 - 本番Damage式
-- 復活
-- レーン復帰
-- 3レーンSnapshot
+- 個別位置・移動・対面
+- 復活・レーン復帰
+- Local / Adjacent / Global
+- 3レーンEvent / Snapshot / Viewer
 
----
+## M3-B: Nexus・本番勝敗
 
-## M3-B: 進軍・ネクサス
-
-Status: M3-A完了待ち
+Status: Done
 
 対象:
 
-- Lane進軍
 - NexusState
-- ネクサス攻撃
-- 本番勝敗
-- 本番最大Action・膠着判定
-- Local / Adjacent / Global
-
----
+- Nexus HP 8000暫定値
+- Local通常カードによるNexus攻撃
+- Nexus破壊勝敗
+- 本番最大Action撤廃
+- Simulation Safety Error
+- Nexus Event / Snapshot / Viewer
 
 ## M4-A: SUPPORT
+
 
 対象:
 
@@ -637,22 +642,318 @@ Ready
 
 ---
 
-# 12. 暫定制約解除WBS
+# 12. M3-A WBS
+
+## F-1. BattleRuleConfig
+
+### F-1-1. Rule Config Schema
+### F-1-2. Git管理Default Config
+### F-1-3. Local Override
+### F-1-4. GET Rule Config API
+### F-1-5. PUT Rule Config API
+### F-1-6. atomic save
+### F-1-7. Viewer設定画面
+### F-1-8. Replayへapplied config保存
+
+## F-2. Deterministic Random
+
+### F-2-1. stable sub-seed導出
+### F-2-2. initial deck shuffle stream
+### F-2-3. recycle shuffle stream
+### F-2-4. respawn shuffle stream
+### F-2-5. adjacent target stream
+### F-2-6. 同一入力・Seed再現テスト
+
+## F-3. 3レーンAction Scheduler
+
+### F-3-1. Lane ID top / mid / bot
+### F-3-2. ally / enemy slot
+### F-3-3. Battle全体Action Index
+### F-3-4. TOP味方→TOP敵→MID味方→MID敵→BOT味方→BOT敵
+### F-3-5. 死亡中slotもAction消費
+### F-3-6. Event lane_id
+
+## F-4. 本番Deck Runtime
+
+### F-4-1. original deck
+### F-4-2. 戦闘開始shuffle
+### F-4-3. initial hand 3
+### F-4-4. hand limit 7
+### F-4-5. overflow oldest discard
+### F-4-6. recycle shuffle
+### F-4-7. oldest card only
+### F-4-8. blocked oldest stops action
+### F-4-9. consumes_action
+### F-4-10. card chain safety error
+
+## F-5. CharacterMaster / CardMaster v2
+
+### F-5-1. AD
+### F-5-2. AP
+### F-5-3. AR
+### F-5-4. MR
+### F-5-5. PUSH
+### F-5-6. Effect scope
+### F-5-7. Damage type
+### F-5-8. base_damage
+### F-5-9. scaling ratio_bp
+### F-5-10. consumes_action
+
+## F-6. Position / PUSH / Engagement
+
+### F-6-1. position -1000～1000
+### F-6-2. initial position 0
+### F-6-3. non-engaged movement
+### F-6-4. crossing clamp
+### F-6-5. engagement start / end
+### F-6-6. engaged push difference
+### F-6-7. enemy Nexus reach state
+
+## F-7. Respawn
+
+### F-7-1. own-turn counter
+### F-7-2. default 3 skipped turns
+### F-7-3. HP / MP max reset
+### F-7-4. Deck reinitialize / shuffle
+### F-7-5. hand initial draw
+### F-7-6. discard clear
+### F-7-7. Draw Gauge 0
+### F-7-8. own Nexus position
+### F-7-9. move and engage before draw
+### F-7-10. same-action card use after engage
+
+## F-8. Damage Calculator
+
+### F-8-1. base + scaling
+### F-8-2. multiple stat scaling
+### F-8-3. physical / magic / true
+### F-8-4. AR / MR LoL formula
+### F-8-5. basis points
+### F-8-6. no intermediate rounding
+### F-8-7. final floor
+### F-8-8. minimum damage 1
+
+## F-9. Scope / Target Resolver
+
+### F-9-1. local Character target
+### F-9-2. adjacent TOP/BOT→MID
+### F-9-3. adjacent MID→TOP/BOT random
+### F-9-4. adjacent no target failure
+### F-9-5. global all living enemies
+### F-9-6. global order TOP→MID→BOT
+### F-9-7. adjacent/global Nexus exclusion
+
+## F-10. Event / Snapshot / Viewer
+
+### F-10-1. lane movement Event
+### F-10-2. engagement Event
+### F-10-3. deck shuffle / recycle Event
+### F-10-4. overflow discard Event
+### F-10-5. respawn Event
+### F-10-6. target failure Event
+### F-10-7. position / push Snapshot
+### F-10-8. respawn counter Snapshot
+### F-10-9. 3レーンViewer
+### F-10-10. lane marker UI
+
+## F-11. Tests
+
+- Scheduler固定順
+- 死亡中slotのAction Index
+- 初期shuffle再現性
+- recycle shuffle再現性
+- 初期手札3 / 最大7
+- overflow oldest discard
+- oldest card block
+- consumes_action true / false
+- 移動・cross clamp
+- PUSH差
+- 復活3回skip
+- 復活時full reset
+- 復活Actionで対面後にカード使用
+- Damage式・丸め・最低1
+- Adjacent対象選択
+- Adjacent対象なし不発
+- Global全生存敵
+- Adjacent / GlobalがNexusを対象にしない
+
+---
+
+# 13. M3-A Definition of Ready
+
+- [x] 3レーン構成
+- [x] Scheduler順
+- [x] Action Index単位
+- [x] 死亡中Action扱い
+- [x] shuffle条件
+- [x] 初期手札
+- [x] 手札上限
+- [x] overflow処理
+- [x] recycle
+- [x] 最古カード優先
+- [x] Action消費属性
+- [x] 復活カウント単位
+- [x] 復活時状態
+- [x] 復活後移動・行動
+- [x] 位置モデル
+- [x] PUSH差計算
+- [x] Damage式
+- [x] 防御式
+- [x] 丸め
+- [x] Local / Adjacent / Global
+- [x] Adjacent対象なし
+- [x] Global Nexus除外
+- [x] Rule Config編集・保存境界
+- [x] 再現性
+
+判定:
+
+```text
+Ready
+```
+
+---
+
+# 14. M3-A Definition of Done
+
+- [x] 3レーン6participantを最後まで進行できる
+- [x] Schedulerが固定順で巡回する
+- [x] 死亡中slotで復活カウントが進む
+- [x] Battle SeedによるDeck shuffleが決定的
+- [x] 初期手札3 / 最大7
+- [x] 最大手札Drawで最古カードをdiscardする
+- [x] draw pile枯渇時にdiscardをshuffleする
+- [x] 最古カード使用不能時に後続を探索しない
+- [x] consumes_actionが機能する
+- [x] 個別位置・移動・対面が機能する
+- [x] PUSH差で対面位置が移動する
+- [x] 3回の自分の行動機会を失った後に復活する
+- [x] 復活時にHP / MP / Deck / Draw Gaugeをリセットする
+- [x] 復活Actionで対面時にカードを使用できる
+- [x] AD / AP / AR / MR Damageが仕様通り
+- [x] 中間丸めなし・最終floor・最低1
+- [x] Adjacentが仕様通り
+- [x] Globalが全生存敵だけを対象にする
+- [x] Adjacent / GlobalがNexusへfallbackしない
+- [x] Rule ConfigをViewerから編集・保存できる
+- [x] Replayに適用Configが含まれる
+- [x] 3レーンViewerで位置と対面を確認できる
+- [x] make lint成功
+- [x] make test成功
+- [x] coverage 85%以上
+
+---
+
+# 15. M3-B WBS
+
+## G-1. NexusState
+
+### G-1-1. ally / enemy Nexus
+### G-1-2. max HP 8000 default
+### G-1-3. AR / MR default 0
+### G-1-4. Snapshot
+
+## G-2. Nexus Target
+
+### G-2-1. Local only
+### G-2-2. enemy Nexus position reached
+### G-2-3. no engaged local enemy
+### G-2-4. normal Damage card
+### G-2-5. Adjacent exclusion
+### G-2-6. Global exclusion
+### G-2-7. respawn engagement before draw
+
+## G-3. Nexus Damage / End
+
+### G-3-1. standard Damage Calculator
+### G-3-2. nexus_damaged
+### G-3-3. nexus_destroyed
+### G-3-4. Nexus HP floor 0
+### G-3-5. ally_win / ally_loss
+### G-3-6. no character elimination victory
+### G-3-7. no game max actions
+### G-3-8. safety limit is error
+
+## G-4. Viewer
+
+### G-4-1. Nexus HP
+### G-4-2. Nexus attack target
+### G-4-3. Nexus damage phase result
+### G-4-4. final result
+
+## G-5. Tests
+
+- Nexus未到達時は攻撃不可
+- 対面中はNexus攻撃不可
+- Nexus到達・対面なしでLocal DamageがNexusへ向く
+- 復活して対面したActionではNexusへ向かない
+- Adjacent / GlobalはNexusへ向かない
+- Nexus HP 0でのみBattle終了
+- Character全滅では終了しない
+- Safety Limitはdrawではなくerror
+
+---
+
+# 16. M3-B Definition of Ready
+
+- [x] Nexus数
+- [x] Nexus HP
+- [x] Nexus防御暫定値
+- [x] 攻撃可能位置
+- [x] 使用カード
+- [x] 対面優先
+- [x] Adjacent Nexus除外
+- [x] Global Nexus除外
+- [x] 復活との順序
+- [x] 勝敗条件
+- [x] 最大Action撤廃
+- [x] Safety Limitの扱い
+
+判定:
+
+```text
+Done
+```
+
+---
+
+# 17. M3-B Definition of Done
+
+- [x] NexusStateがBattleに存在する
+- [x] Nexus最大HP初期値8000
+- [x] 通常Local DamageカードでNexusを攻撃できる
+- [x] 敵Nexus位置未到達では攻撃できない
+- [x] 対面相手がいればCharacterを優先する
+- [x] Adjacent対象なしは不発
+- [x] Globalは生存敵Characterだけを対象にする
+- [x] Nexus HP 0でBattleが終了する
+- [x] Character全滅では終了しない
+- [x] 本番最大Action数が存在しない
+- [x] Safety Limit到達がSimulation Errorになる
+- [x] Nexus Event / Snapshot / Viewerが整合する
+- [x] make lint成功
+- [x] make test成功
+- [x] coverage 85%以上
+
+---
+
+# 18. 暫定制約解除WBS
 
 ## M3-A
 
-- M1固定turn_orderを本番Schedulerへ置換
-- M1 Deck暫定値を本番値へ置換
-- 1対1を複数participantへ拡張
-- 1レーンを3レーンへ拡張
-- 固定Damageを本番Damageへ置換
-- 復活を追加
+- M1固定turn_orderを3レーンSchedulerへ置換
+- M1 shuffleなしをSeed付きshuffleへ置換
+- M1 hand limit 5をConfig初期値7へ置換
+- M1 playable card scanを最古カード限定へ置換
+- M1固定Damageを本番Damageへ置換
+- 1対1を3レーン6participantへ拡張
+- 復活、位置、PUSH、Scopeを追加
 
 ## M3-B
 
 - 全滅勝敗をNexus勝敗へ置換
-- 進軍を追加
-- 本番最大Actionを決定
+- M1 max_actions drawを廃止
+- Local Nexus攻撃を追加
 
 ## M4-A
 
@@ -666,27 +967,36 @@ Ready
 
 ---
 
-# 13. Product Owner Decision Gate
+# 19. Product Owner Decision Gate
 
 ## DG-001: 本番Action Scheduler
 
 期限: M3-A前  
-Status: Open
+Status: Accepted  
+Decision: TOP味方→TOP敵→MID味方→MID敵→BOT味方→BOT敵。Battle全体でAction Indexを共有する。
 
 ## DG-002: 本番Deck循環
 
 期限: M3-A前  
-Status: Open
+Status: Accepted  
+Decision: Seed付きshuffle、初期手札3、最大7、Recycle時shuffle、最古カード限定、overflow時最古破棄。
 
 ## DG-003: 復活テンポ
 
 期限: M3-A前  
-Status: Open
+Status: Accepted  
+Decision: 自分の行動機会を3回失った後、HP / MP最大、Deck / Draw Gauge reset、自陣Nexusから復活する。
 
 ## DG-004: 反撃・追撃・割り込み
 
 期限: M4-B前  
 Status: Open
+
+## DG-005: 位置・PUSH・対象Scope・Nexus
+
+期限: M3-A前  
+Status: Accepted  
+Decision: 個別位置、PUSH差、Local / Adjacent / Global、Adjacent対象なし不発、Global Nexus除外、Nexus HP 8000、Nexus破壊勝敗を採用する。
 
 OpenのDecision Gateは、指定マイルストーン以前の開発を妨げない。
 

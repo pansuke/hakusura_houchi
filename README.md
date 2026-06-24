@@ -1,6 +1,6 @@
 # Lane Relay
 
-放置系 x ハクスラ x デッキ構築 RPG のプロトタイプ基盤です。現段階ではゲーム本体の実装ではなく、Docker で FastAPI と Vue/Vite Viewer を起動し、トップ画面からバックエンド疎通を確認できる M0-A 開発環境基盤を整えています。
+放置系 x ハクスラ x デッキ構築 RPG のプロトタイプ基盤です。Docker で FastAPI と Vue/Vite Viewer を起動し、M1の1対1BattleEngineとM2のReplay API / 開発Viewerを検証できます。
 
 ## 現在のスコープ
 
@@ -18,9 +18,27 @@ M0-B Master データ基盤:
 - 参照整合性チェック
 - `data/generated/game-data.json` の決定的生成
 
-現在は M0-A 完了候補、M0-B 実装開始済みです。
+現在の到達点:
 
-Postgres、PvP サーバー、認証、課金、Steam 連携、戦闘ロジック本体はまだ導入しません。
+- M0-A: 完了候補
+- M0-B: 完了候補
+- M1: 実装済み
+- M2: 実装済み・レビュー修正反映済み
+- M3-A: Decision Gate待ち
+
+未実装:
+
+- 3レーン
+- 本番Action Scheduler
+- 本番Deck循環
+- 復活
+- 進軍
+- ネクサス
+- SUPPORT
+- Instance
+- PvE
+- PvP
+- Postgres、認証、課金、Steam 連携
 
 ## 必要環境
 
@@ -41,7 +59,7 @@ make local-up
 - Backend health: http://localhost:8000/health
 - Backend API docs: http://localhost:8000/docs
 
-Viewer のトップページで `backend: ok` が表示されれば、フロントエンドからバックエンドへ疎通できています。
+Viewer のトップページでReplayが表示されれば、フロントエンドからBackendのsimulate APIへ疎通できています。
 
 Backend は Docker healthcheck で起動完了を判定し、Viewer は health API を自動リトライします。手動で再確認したい場合はトップページの `Retry` を押します。
 
@@ -83,7 +101,7 @@ backend/
   src/lane_relay/
     api/          FastAPI entrypoint and routers
     domain/       Domain model placeholder
-    engine/       Battle engine placeholder
+    engine/       M1 BattleEngine
     data/         Master data loading placeholder
   tests/
 viewer/

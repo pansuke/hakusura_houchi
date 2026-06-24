@@ -1,0 +1,13 @@
+{
+  "id": "card_recover",
+  "name": "治癒",
+  "rarity": "common",
+  "mp_cost": 1,
+  "effects": [
+    {
+      "type": "heal",
+      "target": "self",
+      "power": 3
+    }
+  ]
+}

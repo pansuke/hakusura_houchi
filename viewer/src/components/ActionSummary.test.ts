@@ -95,8 +95,8 @@ describe('ActionSummary', () => {
     })
 
     expect(wrapper.text()).toContain('戦闘開始前')
-    expect(wrapper.text()).toContain('① 行動準備')
-    expect(wrapper.text()).toContain('カード判定前です')
+    expect(wrapper.text()).not.toContain('① 行動準備')
+    expect(wrapper.text()).not.toContain('カード判定前です')
   })
 
   test('summarizes card action in Japanese', () => {
@@ -106,7 +106,18 @@ describe('ActionSummary', () => {
         events: [
           event('mana_recovered', { before: 2, requested: 1, applied: 1, after: 3, reason: 'action_right' }, 'ally_001', 'ally_001'),
           event('gauge_changed', { before: 80, gain: 20, trigger_count: 1, after: 0 }, 'ally_001', null),
-          event('card_drawn', { card_id: 'card_fire_ball', reason: 'draw_gauge', hand_size_before: 3, hand_size_after: 4 }, 'ally_001', null),
+          event(
+            'card_drawn',
+            {
+              card_id: 'card_fire_ball',
+              reason: 'draw_gauge',
+              draw_source: 'draw_gauge',
+              hand_size_before: 3,
+              hand_size_after: 4,
+            },
+            'ally_001',
+            null,
+          ),
           event('card_used', { card_id: 'card_fire_ball' }, 'ally_001', 'enemy_001'),
           event('mana_spent', { before: 3, amount: 1, after: 2 }, 'ally_001', null),
           event('damage_applied', { before: 28, requested: 12, applied: 12, after: 16 }),

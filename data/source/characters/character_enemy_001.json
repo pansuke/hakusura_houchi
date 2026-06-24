@@ -1,0 +1,16 @@
+{
+  "id": "character_enemy_001",
+  "name": "ゴブリン",
+  "base_stats": {
+    "hp": 80,
+    "mp": 10,
+    "ad": 8,
+    "ap": 0,
+    "ar": 2,
+    "mr": 1,
+    "ds": 0,
+    "mrg": 1,
+    "hrg": 0
+  },
+  "trait_ids": []
+}

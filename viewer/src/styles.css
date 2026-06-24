@@ -170,6 +170,24 @@ input {
   font-size: 1.25rem;
 }
 
+.initial-hands {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+}
+
+.initial-hands h3 {
+  margin: 0 0 8px;
+  color: #e1b45f;
+  font-size: 0.95rem;
+}
+
+.initial-hands ul {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: #d8d2c3;
+}
+
 .phase-items,
 .debug-panel ul {
   display: grid;

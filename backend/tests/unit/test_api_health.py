@@ -104,7 +104,24 @@ def test_battle_simulate_api_returns_replay() -> None:
     assert payload["summary"]["result"] == "ally_win"
     assert payload["snapshots"][0]["action_index"] == 0
     assert any(event["event_type"] == "battle_completed" for event in payload["events"])
-    assert "display_catalog" in payload
+    assert payload["display_catalog"]["participants"]["ally_001"]["name"] == "名称未設定"
+    assert payload["display_catalog"]["cards"]["card_slash"]["name"] == "名称未設定"
+
+
+def test_battle_simulate_api_builds_display_catalog_from_master_data() -> None:
+    client = TestClient(create_app())
+    payload = valid_battle_payload()
+    participants = payload["participants"]
+    assert isinstance(participants, list)
+    participants[0]["character_master_id"] = "character_warrior_001"
+    participants[0]["deck"][0]["card_id"] = "card_fire_ball"
+
+    response = client.post("/api/v1/battles/simulate", json=payload)
+
+    assert response.status_code == 200
+    catalog = response.json()["display_catalog"]
+    assert catalog["participants"]["ally_001"]["name"] == "戦士"
+    assert catalog["cards"]["card_fire_ball"]["name"] == "火球"
 
 
 def test_battle_simulate_api_returns_422_for_invalid_scenario() -> None:

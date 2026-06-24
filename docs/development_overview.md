@@ -45,6 +45,9 @@
 - 計算済みReplayのAction cursor表示
 - Action Pipelineによるフェーズ表示
 - 日本語名を優先した表示とDebug raw eventの分離
+- Action #0専用の初期状態表示
+- 自動再生中の手動操作無効化
+- Draw失敗を`draw_source`でドロー/効果解決へ分類
 
 ## 採用方針
 
@@ -54,6 +57,7 @@
 - 初期段階では Postgres を導入しない
 - 戦闘ロジックは Viewer に入れない
 - Viewer はBattleEngineが生成したReplayを表示するだけにする
+- Display Catalog は API 層で Master データから生成し、未登録時は安全な名称を表示する
 - Masterデータは `data/source` の個別 JSON から `data/generated/game-data.json` へ統合する
 - M0-Bでは CharacterMaster / TraitMaster / CardMaster のみ対象にする
 - HPR / MPR はGaugeではなく、行動権獲得時の確定回復とする

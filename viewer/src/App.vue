@@ -12,25 +12,25 @@
       <p class="lead">{{ uiLabels.lead }}</p>
 
       <div class="toolbar">
-        <button type="button" :disabled="isBusy || cursor === 0" @click="goFirst">
+        <button type="button" :disabled="isBusy || autoplay || cursor === 0" @click="goFirst">
           {{ uiLabels.first }}
         </button>
-        <button type="button" :disabled="isBusy || cursor === 0" @click="goPrevious">
+        <button type="button" :disabled="isBusy || autoplay || cursor === 0" @click="goPrevious">
           {{ uiLabels.previous }}
         </button>
-        <button type="button" :disabled="isBusy || isAtLast" @click="goNext">
+        <button type="button" :disabled="isBusy || autoplay || isAtLast" @click="goNext">
           {{ uiLabels.next }}
         </button>
-        <button type="button" :disabled="isBusy || isAtLast" @click="stepBy(10)">
+        <button type="button" :disabled="isBusy || autoplay || isAtLast" @click="stepBy(10)">
           {{ uiLabels.tenForward }}
         </button>
-        <button type="button" :disabled="isBusy || isAtLast" @click="stepBy(100)">
+        <button type="button" :disabled="isBusy || autoplay || isAtLast" @click="stepBy(100)">
           {{ uiLabels.hundredForward }}
         </button>
-        <button type="button" :disabled="isBusy || isAtLast" @click="goLast">
+        <button type="button" :disabled="isBusy || autoplay || isAtLast" @click="goLast">
           {{ uiLabels.last }}
         </button>
-        <button type="button" :disabled="isBusy || !replay" @click="toggleAutoplay">
+        <button type="button" :disabled="isBusy || !replay || (isAtLast && !autoplay)" @click="toggleAutoplay">
           {{ autoplay ? uiLabels.pause : uiLabels.autoplay }}
         </button>
       </div>
@@ -41,6 +41,7 @@
           <input
             v-model.number="jumpTarget"
             :max="lastCursor"
+            :disabled="isBusy || autoplay"
             min="0"
             type="number"
             @change="jumpTo"
@@ -61,8 +62,15 @@
 
       <template v-if="currentSnapshot && replay">
         <ActionSummary
+          v-if="currentSnapshot.action_index > 0"
           :catalog="replay.display_catalog"
           :events="currentEvents"
+          :last-cursor="lastCursor"
+          :snapshot="currentSnapshot"
+        />
+        <InitialBattleState
+          v-else
+          :catalog="replay.display_catalog"
           :last-cursor="lastCursor"
           :snapshot="currentSnapshot"
         />
@@ -95,6 +103,7 @@ import { computed, onMounted, ref } from 'vue'
 import { simulateBattle } from './api/battleApi'
 import ActionSummary from './components/ActionSummary.vue'
 import DebugEventList from './components/DebugEventList.vue'
+import InitialBattleState from './components/InitialBattleState.vue'
 import ParticipantCard from './components/ParticipantCard.vue'
 import { useReplayController } from './composables/useReplayController'
 import { m1Scenario } from './fixtures/m1Scenario'
@@ -127,9 +136,16 @@ const {
 
 const resultLabel = computed(() => visibleResultLabel(replay.value, isAtLast.value))
 
+const sideOrder: Record<string, number> = {
+  ally: 0,
+  enemy: 1,
+}
+
 const participantList = computed(() =>
-  Object.values(currentSnapshot.value?.participants ?? {}).sort((left, right) =>
-    left.participant_id.localeCompare(right.participant_id),
+  Object.values(currentSnapshot.value?.participants ?? {}).sort(
+    (left, right) =>
+      (sideOrder[left.side] ?? 99) - (sideOrder[right.side] ?? 99) ||
+      left.participant_id.localeCompare(right.participant_id),
   ),
 )
 

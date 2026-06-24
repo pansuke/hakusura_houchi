@@ -342,9 +342,7 @@ class BattleEngine:
         before = participant.draw_gauge
         participant.draw_gauge += participant.setup.ds
         trigger_count = participant.draw_gauge // GAUGE_THRESHOLD
-        while participant.draw_gauge >= GAUGE_THRESHOLD:
-            participant.draw_gauge -= GAUGE_THRESHOLD
-            self._draw_one(runtime, recorder, participant, reason="draw_gauge")
+        participant.draw_gauge %= GAUGE_THRESHOLD
         recorder.record(
             runtime.action_index,
             "gauge_changed",
@@ -358,6 +356,8 @@ class BattleEngine:
                 "blocked_reason": None,
             },
         )
+        for _draw_index in range(trigger_count):
+            self._draw_one(runtime, recorder, participant, draw_source="draw_gauge")
 
     def _attempt_card(
         self,
@@ -453,7 +453,7 @@ class BattleEngine:
             self._gain_mana(runtime, recorder, target, effect.value, reason="card_effect")
         elif effect.effect_type == "draw_card":
             for _draw_index in range(effect.value):
-                self._draw_one(runtime, recorder, target, reason="card_effect")
+                self._draw_one(runtime, recorder, target, draw_source="card_effect")
 
     def _target_for_card(
         self,
@@ -487,7 +487,7 @@ class BattleEngine:
         runtime: BattleRuntime,
         recorder: EventRecorder,
         participant: ParticipantRuntime,
-        reason: str,
+        draw_source: str,
     ) -> None:
         if len(participant.hand) >= HAND_LIMIT:
             recorder.record(
@@ -495,7 +495,8 @@ class BattleEngine:
                 "card_draw_blocked",
                 actor_id=participant.setup.participant_id,
                 payload={
-                    "reason": "hand_full",
+                    "blocked_reason": "hand_full",
+                    "draw_source": draw_source,
                     "hand_size": len(participant.hand),
                     "hand_limit": HAND_LIMIT,
                 },
@@ -509,7 +510,11 @@ class BattleEngine:
                 runtime.action_index,
                 "card_draw_blocked",
                 actor_id=participant.setup.participant_id,
-                payload={"reason": "empty_deck", "hand_size": len(participant.hand)},
+                payload={
+                    "blocked_reason": "empty_deck",
+                    "draw_source": draw_source,
+                    "hand_size": len(participant.hand),
+                },
             )
             return
         hand_size_before = len(participant.hand)
@@ -521,7 +526,8 @@ class BattleEngine:
             actor_id=participant.setup.participant_id,
             payload={
                 "card_id": card.card_id,
-                "reason": reason,
+                "reason": draw_source,
+                "draw_source": draw_source,
                 "hand_size_before": hand_size_before,
                 "hand_size_after": len(participant.hand),
             },
@@ -789,13 +795,13 @@ class BattleEngine:
         return {
             "participants": {
                 participant.participant_id: {
-                    "name": self._participant_display_name(participant.participant_id),
+                    "name": "名称未設定",
                 }
                 for participant in scenario.participants
             },
             "cards": {
                 card.card_id: {
-                    "name": self._card_display_name(card.card_id),
+                    "name": "名称未設定",
                     "mp_cost": card.mp_cost,
                     "description": self._card_description(card),
                 }
@@ -803,22 +809,6 @@ class BattleEngine:
                 for card in participant.deck
             },
         }
-
-    def _participant_display_name(self, participant_id: str) -> str:
-        names = {
-            "ally_001": "戦士",
-            "enemy_001": "ゴブリン",
-        }
-        return names.get(participant_id, participant_id)
-
-    def _card_display_name(self, card_id: str) -> str:
-        names = {
-            "card_fire_ball": "火球",
-            "card_focus": "精神集中",
-            "card_recover": "治癒",
-            "card_claw": "ひっかき",
-        }
-        return names.get(card_id, card_id)
 
     def _card_description(self, card: BattleCard) -> str:
         descriptions: list[str] = []

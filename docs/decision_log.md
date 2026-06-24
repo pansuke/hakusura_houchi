@@ -71,3 +71,19 @@
 - Context: Event時系列の箇条書きだけでは、行動準備、ドロー、カード使用、効果、終了判定のどこで何が起きたか判別しづらい。
 - Decision: ViewerのAction Summaryは「行動準備」「ドロー」「カードアクション」「効果解決」「行動終了」の5フェーズで表示する。
 - Impact: ドロー権獲得、引いたカード、対象、MP消費、HP変化、次行動者をAction単位で確認できる。
+
+## DEC-009: M2ではAction #0をAction Pipelineとして表示しない
+
+- Status: Accepted
+- Date: 2026-06-24
+- Context: Action #0は戦闘開始前Snapshotであり、行動準備・ドロー・カードアクション・効果解決・行動終了は実行されていない。
+- Decision: Action #0は専用の初期状態表示とし、最初の行動者と初期手札を表示する。
+- Impact: ViewerはAction #1以降だけ5フェーズのAction Pipelineを表示する。
+
+## DEC-010: 自動再生中は手動移動を無効化する
+
+- Status: Accepted
+- Date: 2026-06-24
+- Context: 自動再生タイマーと手動操作が同時にcursorを進めると、Actionを飛ばして表示する可能性がある。
+- Decision: 自動再生中は最初・前へ・次へ・+10・+100・最後・Jumpを無効化し、一時停止ボタンだけ操作可能にする。
+- Impact: 自動再生と手動操作の競合をM2ではUI制御で防ぐ。

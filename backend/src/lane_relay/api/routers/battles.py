@@ -1,4 +1,6 @@
+import json
 from dataclasses import asdict
+from pathlib import Path
 from typing import cast
 
 from fastapi import APIRouter, HTTPException
@@ -38,7 +40,9 @@ def simulate_battle(request: BattleSimulateRequest) -> dict[str, object]:
         replay = BattleEngine().simulate(to_scenario(request))
     except BattleScenarioError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return asdict(replay)
+    payload = asdict(replay)
+    payload["display_catalog"] = build_display_catalog(request, payload["display_catalog"])
+    return payload
 
 
 def to_scenario(request: BattleSimulateRequest) -> BattleScenario:
@@ -78,3 +82,72 @@ def to_scenario(request: BattleSimulateRequest) -> BattleScenario:
         max_actions=request.max_actions,
         seed=request.seed,
     )
+
+
+def build_display_catalog(
+    request: BattleSimulateRequest,
+    fallback_catalog: object,
+) -> dict[str, object]:
+    fallback = fallback_catalog if isinstance(fallback_catalog, dict) else {}
+    fallback_cards = fallback.get("cards", {}) if isinstance(fallback.get("cards"), dict) else {}
+    master_data = load_generated_master_data()
+    characters = {
+        character["id"]: character
+        for character in master_data.get("characters", [])
+        if isinstance(character, dict) and isinstance(character.get("id"), str)
+    }
+    cards = {
+        card["id"]: card
+        for card in master_data.get("cards", [])
+        if isinstance(card, dict) and isinstance(card.get("id"), str)
+    }
+
+    return {
+        "participants": {
+            participant.participant_id: {
+                "name": display_name_from_master(
+                    characters.get(participant.character_master_id)
+                ),
+            }
+            for participant in request.participants
+        },
+        "cards": {
+            card.card_id: {
+                "name": display_name_from_master(cards.get(card.card_id)),
+                "mp_cost": master_card_mp_cost(cards.get(card.card_id), card.mp_cost),
+                "description": fallback_card_description(fallback_cards, card.card_id),
+            }
+            for participant in request.participants
+            for card in participant.deck
+        },
+    }
+
+
+def load_generated_master_data() -> dict[str, object]:
+    data_path = Path("/workspace/data/generated/game-data.json")
+    if not data_path.exists():
+        return {}
+    with data_path.open(encoding="utf-8") as data_file:
+        data = json.load(data_file)
+    return data if isinstance(data, dict) else {}
+
+
+def display_name_from_master(master: object) -> str:
+    if isinstance(master, dict) and isinstance(master.get("name"), str):
+        return master["name"]
+    return "名称未設定"
+
+
+def master_card_mp_cost(master: object, fallback: int) -> int:
+    if isinstance(master, dict) and isinstance(master.get("mp_cost"), int):
+        return master["mp_cost"]
+    return fallback
+
+
+def fallback_card_description(fallback_cards: object, card_id: str) -> str:
+    if not isinstance(fallback_cards, dict):
+        return ""
+    card = fallback_cards.get(card_id)
+    if isinstance(card, dict) and isinstance(card.get("description"), str):
+        return card["description"]
+    return ""

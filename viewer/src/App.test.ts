@@ -67,6 +67,7 @@ const replay: BattleReplay = {
       payload: {
         card_id: 'card_fire_ball',
         reason: 'draw_gauge',
+        draw_source: 'draw_gauge',
         hand_size_before: 3,
         hand_size_after: 4,
       },
@@ -247,6 +248,10 @@ describe('App', () => {
       expect.objectContaining({ method: 'POST' }),
     )
     expect(wrapper.text()).toContain('戦闘開始前')
+    expect(wrapper.text()).toContain('最初の行動者：戦士')
+    expect(wrapper.text()).toContain('味方・戦士 初期手札')
+    expect(wrapper.text()).toContain('火球')
+    expect(wrapper.text()).not.toContain('① 行動準備')
     expect(wrapper.text()).toContain('味方・戦士')
     expect(wrapper.text()).toContain('敵・ゴブリン')
 
@@ -314,6 +319,27 @@ describe('App', () => {
     await vi.runOnlyPendingTimersAsync()
 
     expect(wrapper.text()).toContain('行動 2 / 2')
+    wrapper.unmount()
+  })
+
+  test('autoplay disables manual movement and jump while pause remains available', async () => {
+    vi.useFakeTimers()
+    const wrapper = await mountLoadedApp()
+
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '自動再生')
+      ?.trigger('click')
+
+    expect(wrapper.findAll('button').find((button) => button.text() === '次へ')?.attributes('disabled')).toBeDefined()
+    expect(wrapper.findAll('button').find((button) => button.text() === '前へ')?.attributes('disabled')).toBeDefined()
+    expect(wrapper.findAll('button').find((button) => button.text() === '+10')?.attributes('disabled')).toBeDefined()
+    expect(wrapper.findAll('button').find((button) => button.text() === '+100')?.attributes('disabled')).toBeDefined()
+    expect(wrapper.get('input').attributes('disabled')).toBeDefined()
+
+    await wrapper.findAll('button').find((button) => button.text() === '一時停止')?.trigger('click')
+    expect(wrapper.text()).toContain('自動再生')
+
     wrapper.unmount()
   })
 
@@ -453,6 +479,7 @@ describe('App', () => {
 
     expect(wrapper.text()).toContain('行動 2 / 2')
     expect(wrapper.text()).toContain('自動再生')
+    expect(wrapper.findAll('button').find((button) => button.text() === '自動再生')?.attributes('disabled')).toBeDefined()
     wrapper.unmount()
   })
 

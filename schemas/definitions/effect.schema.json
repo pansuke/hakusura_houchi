@@ -8,11 +8,11 @@
   "properties": {
     "type": {
       "type": "string",
-      "enum": ["damage", "heal", "support"]
+      "enum": ["damage", "heal", "gain_mana", "draw_card"]
     },
     "target": {
       "type": "string",
-      "enum": ["self", "enemy", "ally_lane"]
+      "enum": ["self", "enemy"]
     },
     "power": {
       "type": "integer",

@@ -42,11 +42,11 @@ export function participantName(catalog: DisplayCatalog, participantId: string |
   if (!participantId) {
     return '-'
   }
-  return catalog.participants[participantId]?.name ?? participantId
+  return catalog.participants[participantId]?.name ?? '名称未設定'
 }
 
 export function cardName(catalog: DisplayCatalog, cardId: unknown): string {
-  return typeof cardId === 'string' ? catalog.cards[cardId]?.name ?? cardId : '-'
+  return typeof cardId === 'string' ? catalog.cards[cardId]?.name ?? '名称未設定' : '-'
 }
 
 export function cardDescription(catalog: DisplayCatalog, cardId: string): string {
@@ -81,6 +81,9 @@ export function buildActionPhases(
   events: BattleEvent[],
   catalog: DisplayCatalog,
 ): ActionPhaseView[] {
+  if (snapshot.action_index === 0) {
+    return []
+  }
   return [
     buildStandbyPhase(events),
     buildDrawPhase(events, catalog),
@@ -119,10 +122,12 @@ function buildStandbyPhase(events: BattleEvent[]): ActionPhaseView {
       )} → ${numberPayload(drawGauge, 'after')}`,
       importance: triggerCount > 0 ? 'primary' : 'secondary',
     })
-    items.push({
-      label: triggerCount > 0 ? `ドロー権を${triggerCount}回獲得` : 'ドロー権は発生しませんでした',
-      importance: triggerCount > 0 ? 'primary' : 'secondary',
-    })
+    if (triggerCount > 0) {
+      items.push({
+        label: `ドロー権を${triggerCount}回獲得`,
+        importance: 'primary',
+      })
+    }
   }
 
   return phase('standby', 'completed', items)
@@ -132,9 +137,14 @@ function buildDrawPhase(events: BattleEvent[], catalog: DisplayCatalog): ActionP
   const drawGauge = events.find((event) => event.event_type === 'gauge_changed')
   const triggerCount = drawGauge ? numberPayload(drawGauge, 'trigger_count') : 0
   const drawnCards = events.filter(
-    (event) => event.event_type === 'card_drawn' && event.payload.reason === 'draw_gauge',
+    (event) =>
+      event.event_type === 'card_drawn' &&
+      (event.payload.draw_source ?? event.payload.reason) === 'draw_gauge',
   )
-  const blockedDraws = events.filter((event) => event.event_type === 'card_draw_blocked')
+  const blockedDraws = events.filter(
+    (event) =>
+      event.event_type === 'card_draw_blocked' && event.payload.draw_source === 'draw_gauge',
+  )
   const items: ActionPhaseItem[] = []
 
   if (triggerCount === 0) {
@@ -164,8 +174,7 @@ function buildDrawPhase(events: BattleEvent[], catalog: DisplayCatalog): ActionP
     })
   }
   for (const event of blockedDraws) {
-    const reason = event.payload.reason === 'hand_full' ? '手札上限のためカードを引けませんでした' : '引けるカードがありませんでした'
-    items.push({ label: reason, importance: 'secondary' })
+    items.push(...blockedDrawItems(event))
   }
 
   return phase('draw', blockedDraws.length > 0 ? 'warning' : 'completed', items)
@@ -233,16 +242,27 @@ function buildEffectResultPhase(
 ): ActionPhaseView {
   const items: ActionPhaseItem[] = []
   const effectEvents = events.filter((event) =>
-    ['damage_applied', 'health_recovered', 'mana_gained', 'card_drawn', 'character_defeated'].includes(
-      event.event_type,
-    ),
+    [
+      'damage_applied',
+      'health_recovered',
+      'mana_gained',
+      'card_drawn',
+      'card_draw_blocked',
+      'character_defeated',
+    ].includes(event.event_type),
   )
 
   for (const event of effectEvents) {
     if (event.event_type === 'health_recovered' && event.payload.reason !== 'card_effect') {
       continue
     }
-    if (event.event_type === 'card_drawn' && event.payload.reason !== 'card_effect') {
+    if (
+      event.event_type === 'card_drawn' &&
+      (event.payload.draw_source ?? event.payload.reason) !== 'card_effect'
+    ) {
+      continue
+    }
+    if (event.event_type === 'card_draw_blocked' && event.payload.draw_source !== 'card_effect') {
       continue
     }
     if (event.event_type === 'damage_applied') {
@@ -289,6 +309,10 @@ function buildEffectResultPhase(
         label: `カード効果で「${cardName(catalog, event.payload.card_id)}」を引いた`,
         importance: 'primary',
       })
+    }
+    if (event.event_type === 'card_draw_blocked') {
+      items.push({ label: 'カードを1枚引く効果を処理', importance: 'secondary' })
+      items.push(...blockedDrawItems(event))
     }
     if (event.event_type === 'character_defeated') {
       items.push({
@@ -459,5 +483,28 @@ export function cardAttemptDebugLines(events: BattleEvent[], catalog: DisplayCat
 
 export function numberPayload(event: BattleEvent, key: string): number {
   const value = event.payload[key]
-  return typeof value === 'number' ? value : 0
+  if (typeof value !== 'number') {
+    throw new Error(`Invalid event payload: ${event.event_type}.${key}`)
+  }
+  return value
+}
+
+function blockedDrawItems(event: BattleEvent): ActionPhaseItem[] {
+  const reason =
+    event.payload.blocked_reason === 'hand_full'
+      ? '手札上限のためカードを引けませんでした'
+      : '引けるカードがありませんでした'
+  const items: ActionPhaseItem[] = [{ label: reason, importance: 'secondary' }]
+  if (event.payload.blocked_reason === 'hand_full') {
+    items.push({
+      label: `手札：${numberPayload(event, 'hand_size')} / ${numberPayload(event, 'hand_limit')}`,
+      importance: 'secondary',
+    })
+  } else {
+    items.push({
+      label: `手札：${numberPayload(event, 'hand_size')}枚`,
+      importance: 'secondary',
+    })
+  }
+  return items
 }

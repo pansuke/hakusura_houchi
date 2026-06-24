@@ -4,6 +4,8 @@
 - HPR・MPR・DSが行動準備へ分類される
 - Draw Gaugeによるcard_drawnがドローへ分類される
 - Card Effectによるcard_drawnが効果解決へ分類される
+- Draw失敗はdraw_sourceに応じてドローまたは効果解決へ分類される
+- 必須Payload欠損は0表示ではなく検出される
 - card_heldのMP不足が日本語表示される
 - 手札0枚と全カード使用不能を区別する
 - Damageのbefore / afterが表示される
@@ -98,9 +100,9 @@ describe('battlePresenter', () => {
   test('resolves catalog names and fallbacks', () => {
     expect(participantName(catalog, 'ally_001')).toBe('戦士')
     expect(participantName(catalog, null)).toBe('-')
-    expect(participantName(catalog, 'unknown')).toBe('unknown')
+    expect(participantName(catalog, 'unknown')).toBe('名称未設定')
     expect(cardName(catalog, 'card_heal')).toBe('治癒')
-    expect(cardName(catalog, 'unknown_card')).toBe('unknown_card')
+    expect(cardName(catalog, 'unknown_card')).toBe('名称未設定')
     expect(cardName(catalog, 1)).toBe('-')
     expect(cardDescription(catalog, 'card_heal')).toBe('自身のHPを3回復')
     expect(cardDescription(catalog, 'unknown_card')).toBe('')
@@ -140,12 +142,23 @@ describe('battlePresenter', () => {
         event('health_recovered', { before: 10, requested: 3, applied: 3, after: 13, reason: 'action_right' }, 'ally_001', 'ally_001'),
         event('mana_recovered', { before: 1, requested: 1, applied: 1, after: 2, reason: 'action_right' }, 'ally_001', 'ally_001'),
         event('gauge_changed', { before: 80, gain: 20, trigger_count: 1, after: 0 }, 'ally_001', null),
-        event('card_drawn', { card_id: 'card_focus', reason: 'draw_gauge', hand_size_before: 3, hand_size_after: 4 }, 'ally_001', null),
+        event(
+          'card_drawn',
+          {
+            card_id: 'card_focus',
+            reason: 'draw_gauge',
+            draw_source: 'draw_gauge',
+            hand_size_before: 3,
+            hand_size_after: 4,
+          },
+          'ally_001',
+          null,
+        ),
         event('card_used', { card_id: 'card_heal' }, 'ally_001', 'ally_001'),
         event('mana_spent', { before: 2, amount: 1, after: 1 }, 'ally_001', null),
         event('health_recovered', { before: 10, requested: 3, applied: 3, after: 13, reason: 'card_effect' }, 'ally_001', 'ally_001'),
         event('mana_gained', { before: 1, requested: 1, applied: 1, after: 2 }, 'ally_001', null),
-        event('card_drawn', { card_id: 'card_focus', reason: 'card_effect' }, 'ally_001', null),
+        event('card_drawn', { card_id: 'card_focus', reason: 'card_effect', draw_source: 'card_effect' }, 'ally_001', null),
       ],
       catalog,
     )
@@ -170,6 +183,92 @@ describe('battlePresenter', () => {
     expect(phases[4].items.map((item) => item.label)).toContain('次の行動：ゴブリン')
   })
 
+  test('separates blocked draw by draw source', () => {
+    const gaugeBlocked = buildActionPhases(
+      snapshot,
+      [
+        event('gauge_changed', { before: 80, gain: 20, trigger_count: 1, after: 0 }, 'ally_001', null),
+        event(
+          'card_draw_blocked',
+          { blocked_reason: 'hand_full', draw_source: 'draw_gauge', hand_size: 5, hand_limit: 5 },
+          'ally_001',
+          null,
+        ),
+      ],
+      catalog,
+    )
+    expect(gaugeBlocked[1].items.map((item) => item.label)).toContain(
+      '手札上限のためカードを引けませんでした',
+    )
+    expect(gaugeBlocked[1].items.map((item) => item.label)).toContain('手札：5 / 5')
+    expect(gaugeBlocked[3].items.map((item) => item.label)).not.toContain(
+      '手札上限のためカードを引けませんでした',
+    )
+
+    const gaugeEmpty = buildActionPhases(
+      snapshot,
+      [
+        event('gauge_changed', { before: 80, gain: 20, trigger_count: 1, after: 0 }, 'ally_001', null),
+        event(
+          'card_draw_blocked',
+          { blocked_reason: 'empty_deck', draw_source: 'draw_gauge', hand_size: 0 },
+          'ally_001',
+          null,
+        ),
+      ],
+      catalog,
+    )
+    expect(gaugeEmpty[1].items.map((item) => item.label)).toContain(
+      '引けるカードがありませんでした',
+    )
+
+    const effectEmpty = buildActionPhases(
+      snapshot,
+      [
+        event(
+          'card_draw_blocked',
+          { blocked_reason: 'empty_deck', draw_source: 'card_effect', hand_size: 1 },
+          'ally_001',
+          null,
+        ),
+      ],
+      catalog,
+    )
+    expect(effectEmpty[1].items.map((item) => item.label)).not.toContain(
+      '引けるカードがありませんでした',
+    )
+    expect(effectEmpty[3].items.map((item) => item.label)).toContain(
+      'カードを1枚引く効果を処理',
+    )
+    expect(effectEmpty[3].items.map((item) => item.label)).toContain(
+      '引けるカードがありませんでした',
+    )
+    expect(effectEmpty[3].items.map((item) => item.label)).toContain('手札：1枚')
+
+    const effectHandFull = buildActionPhases(
+      snapshot,
+      [
+        event(
+          'card_draw_blocked',
+          { blocked_reason: 'hand_full', draw_source: 'card_effect', hand_size: 5, hand_limit: 5 },
+          'ally_001',
+          null,
+        ),
+      ],
+      catalog,
+    )
+    expect(effectHandFull[3].items.map((item) => item.label)).toContain(
+      '手札上限のためカードを引けませんでした',
+    )
+    expect(effectHandFull[3].items.map((item) => item.label)).toContain('手札：5 / 5')
+  })
+
+  test('does not silently render missing required payload as zero', () => {
+    expect(() =>
+      buildActionPhases(snapshot, [event('damage_applied', { requested: 12, applied: 12 })], catalog),
+    ).toThrow('Invalid event payload: damage_applied.before')
+  })
+
   test('separates no draw, no hand, and unusable hand states', () => {
     const noDraw = buildActionPhases(
       snapshot,
@@ -178,6 +277,7 @@ describe('battlePresenter', () => {
     )
     expect(noDraw[1].status).toBe('skipped')
     expect(noDraw[1].items.map((item) => item.label)).toContain('ドロー権は発生しませんでした')
+    expect(noDraw[0].items.map((item) => item.label)).not.toContain('ドロー権は発生しませんでした')
 
     const emptyHand = buildActionPhases({ ...snapshot, participants: { ally_001: participant('ally_001', 'ally') } }, [], catalog)
     expect(emptyHand[2].items.map((item) => item.label)).toContain('手札にカードがありませんでした')

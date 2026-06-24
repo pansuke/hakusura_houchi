@@ -93,8 +93,11 @@ def write_schemas(schema_dir: Path) -> None:
                         "required": ["type", "target", "power"],
                         "additionalProperties": False,
                         "properties": {
-                            "type": {"type": "string", "enum": ["damage", "heal", "support"]},
-                            "target": {"type": "string", "enum": ["self", "enemy", "ally_lane"]},
+                            "type": {
+                                "type": "string",
+                                "enum": ["damage", "heal", "gain_mana", "draw_card"],
+                            },
+                            "target": {"type": "string", "enum": ["self", "enemy"]},
                             "power": {"type": "integer", "minimum": 0},
                         },
                     },
@@ -340,7 +343,7 @@ def test_duplicate_ids_across_master_types_are_reported(tmp_path: Path) -> None:
             "name": "Duplicate",
             "rarity": "common",
             "mp_cost": 0,
-            "effects": [{"type": "support", "target": "ally_lane", "power": 1}],
+            "effects": [{"type": "heal", "target": "self", "power": 1}],
         },
     )
 

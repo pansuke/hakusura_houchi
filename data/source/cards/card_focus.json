@@ -1,0 +1,13 @@
+{
+  "id": "card_focus",
+  "name": "精神集中",
+  "rarity": "common",
+  "mp_cost": 0,
+  "effects": [
+    {
+      "type": "gain_mana",
+      "target": "self",
+      "power": 1
+    }
+  ]
+}

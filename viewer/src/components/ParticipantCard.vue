@@ -49,8 +49,8 @@
       <h3>{{ uiLabels.hand }}</h3>
       <div class="card-list">
         <CardChip
-          v-for="cardId in participant.hand"
-          :key="cardId"
+          v-for="(cardId, index) in participant.hand"
+          :key="`${cardId}-${index}`"
           :description="cardDescription(catalog, cardId)"
           :mp-cost="cardMpCost(catalog, cardId)"
           :name="cardName(catalog, cardId)"

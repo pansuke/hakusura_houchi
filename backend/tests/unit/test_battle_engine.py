@@ -216,11 +216,64 @@ def test_hand_limit_blocks_draw_when_hand_is_full() -> None:
         event for event in replay.events if event.event_type == "card_draw_blocked"
     )
     assert blocked_event.payload == {
-        "reason": "hand_full",
+        "blocked_reason": "hand_full",
+        "draw_source": "draw_gauge",
         "hand_size": 5,
         "hand_limit": 5,
     }
+    gauge_event = next(event for event in replay.events if event.event_type == "gauge_changed")
+    assert gauge_event.sequence < blocked_event.sequence
     assert len(replay.snapshots[-1].participants["ally_001"].hand) == 5
+
+
+def test_card_effect_blocked_draw_reports_source() -> None:
+    battle_scenario = scenario(
+        participant(
+            "ally_001",
+            "ally",
+            [
+                draw_card("card_draw", 4),
+                damage_card("card_hold_1", 1, mp_cost=99),
+                damage_card("card_hold_2", 1, mp_cost=99),
+                damage_card("card_hold_3", 1, mp_cost=99),
+                damage_card("card_hold_4", 1, mp_cost=99),
+                damage_card("card_hold_5", 1, mp_cost=99),
+            ],
+        ),
+        participant("enemy_001", "enemy", [damage_card("card_enemy", 0)]),
+        max_actions=1,
+    )
+
+    replay = BattleEngine().simulate(battle_scenario)
+
+    blocked_event = next(
+        event for event in replay.events if event.event_type == "card_draw_blocked"
+    )
+    assert blocked_event.payload == {
+        "blocked_reason": "hand_full",
+        "draw_source": "card_effect",
+        "hand_size": 5,
+        "hand_limit": 5,
+    }
+
+
+def test_empty_deck_blocked_draw_reports_source() -> None:
+    battle_scenario = scenario(
+        participant("ally_001", "ally", [draw_card("card_draw", 2)]),
+        participant("enemy_001", "enemy", [damage_card("card_enemy", 0)]),
+        max_actions=1,
+    )
+
+    replay = BattleEngine().simulate(battle_scenario)
+
+    blocked_event = next(
+        event for event in replay.events if event.event_type == "card_draw_blocked"
+    )
+    assert blocked_event.payload == {
+        "blocked_reason": "empty_deck",
+        "draw_source": "card_effect",
+        "hand_size": 1,
+    }
 
 
 def test_action_right_recovery_applies_only_to_actor_and_caps_hp_mp() -> None:
@@ -357,9 +410,11 @@ def test_ds_applies_only_to_actor_draw_gauge() -> None:
     assert draw_event.payload == {
         "card_id": "card_d",
         "reason": "draw_gauge",
+        "draw_source": "draw_gauge",
         "hand_size_before": 3,
         "hand_size_after": 4,
     }
+    assert gauge_events[0].sequence < draw_event.sequence
 
 
 def test_four_effect_types_are_resolved_in_order() -> None:
@@ -492,7 +547,7 @@ def test_event_snapshot_summary_are_consistent() -> None:
     assert ally_snapshot.ds == 0
     assert ally_snapshot.mpr == 0
     assert ally_snapshot.hpr == 0
-    assert replay.display_catalog["participants"]["ally_001"]["name"] == "戦士"
+    assert replay.display_catalog["participants"]["ally_001"]["name"] == "名称未設定"
 
 
 @pytest.mark.parametrize(

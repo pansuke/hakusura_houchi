@@ -3,6 +3,19 @@
     {
       "effects": [
         {
+          "power": 5,
+          "target": "enemy",
+          "type": "damage"
+        }
+      ],
+      "id": "card_claw",
+      "mp_cost": 0,
+      "name": "ひっかき",
+      "rarity": "common"
+    },
+    {
+      "effects": [
+        {
           "power": 12,
           "target": "enemy",
           "type": "damage"
@@ -10,11 +23,53 @@
       ],
       "id": "card_fire_ball",
       "mp_cost": 3,
-      "name": "Fire Ball",
+      "name": "火球",
+      "rarity": "common"
+    },
+    {
+      "effects": [
+        {
+          "power": 1,
+          "target": "self",
+          "type": "gain_mana"
+        }
+      ],
+      "id": "card_focus",
+      "mp_cost": 0,
+      "name": "精神集中",
+      "rarity": "common"
+    },
+    {
+      "effects": [
+        {
+          "power": 3,
+          "target": "self",
+          "type": "heal"
+        }
+      ],
+      "id": "card_recover",
+      "mp_cost": 1,
+      "name": "治癒",
       "rarity": "common"
     }
   ],
   "characters": [
+    {
+      "base_stats": {
+        "ad": 8,
+        "ap": 0,
+        "ar": 2,
+        "ds": 0,
+        "hp": 80,
+        "hrg": 0,
+        "mp": 10,
+        "mr": 1,
+        "mrg": 1
+      },
+      "id": "character_enemy_001",
+      "name": "ゴブリン",
+      "trait_ids": []
+    },
     {
       "base_stats": {
         "ad": 12,
@@ -28,7 +83,7 @@
         "mrg": 8
       },
       "id": "character_warrior_001",
-      "name": "Warrior",
+      "name": "戦士",
       "trait_ids": [
         "trait_adjacent_splash"
       ]

@@ -618,14 +618,19 @@ Ready
 - [x] simulate APIがReplayを返す
 - [x] simulate APIがReplay response schemaを持つ
 - [x] ViewerがReplayを表示する
+- [x] Action #0では初期状態専用表示を使う
 - [x] nextで1Action進む
 - [x] previousで1Action戻る
 - [x] +10 / +100が終端へ丸められる
 - [x] jumpが動く
 - [x] autoplayが動く
+- [x] autoplay中は手動移動とjumpを無効化する
 - [x] speedが戦闘結果へ影響しない
 - [x] 演出中に多重操作できない
 - [x] 終了位置でnext無効
+- [x] `card_draw_blocked`に`draw_source`がある
+- [x] Draw Gauge由来のDraw失敗はドローフェーズへ表示する
+- [x] Card Effect由来のDraw失敗は効果解決フェーズへ表示する
 - [x] Viewerに戦闘計算がない
 - [x] Front test成功
 - [x] Back test成功

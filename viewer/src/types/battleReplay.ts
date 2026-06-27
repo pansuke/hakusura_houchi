@@ -21,6 +21,10 @@ export type ParticipantSnapshot = {
   ds: number
   mpr: number
   hpr: number
+  ad: number
+  ap: number
+  ar: number
+  mr: number
   draw_gauge: number
   hand: string[]
   draw_pile: string[]

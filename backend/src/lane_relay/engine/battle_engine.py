@@ -133,6 +133,10 @@ class ParticipantSnapshot:
     ds: int
     mpr: int
     hpr: int
+    ad: int
+    ap: int
+    ar: int
+    mr: int
     draw_gauge: int
     hand: list[str]
     draw_pile: list[str]
@@ -1862,6 +1866,10 @@ class BattleEngine:
                     ds=participant.setup.ds,
                     mpr=participant.setup.mpr,
                     hpr=participant.setup.hpr,
+                    ad=participant.setup.ad,
+                    ap=participant.setup.ap,
+                    ar=participant.setup.ar,
+                    mr=participant.setup.mr,
                     draw_gauge=participant.draw_gauge,
                     hand=[card.card_id for card in participant.hand],
                     draw_pile=[card.card_id for card in participant.draw_pile],

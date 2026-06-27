@@ -37,6 +37,16 @@
     </dl>
 
     <section class="stat-section">
+      <h3>戦闘能力</h3>
+      <dl class="combat-stats-detail">
+        <div><dt>AD</dt><dd>{{ participant.ad }}</dd></div>
+        <div><dt>AP</dt><dd>{{ participant.ap }}</dd></div>
+        <div><dt>AR</dt><dd>{{ participant.ar }}</dd></div>
+        <div><dt>MR</dt><dd>{{ participant.mr }}</dd></div>
+      </dl>
+    </section>
+
+    <section class="stat-section">
       <h3>{{ uiLabels.actionRecovery }}</h3>
       <dl>
         <div><dt>{{ uiLabels.hpr }}</dt><dd>{{ recoveryText(participant.hpr) }}</dd></div>

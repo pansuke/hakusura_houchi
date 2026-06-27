@@ -11,6 +11,7 @@
 - 今回の行動者、攻撃対象、次の行動者が分かる
 - Debug領域を開くと内部IDとRaw Eventを確認できる
 - Autoplayは表示位置を進め、終端で停止する
+- 戦場はTOP・MID・BOTを1行ずつ表示しInspectorへ詳細を集約する
 */
 
 import { mount } from '@vue/test-utils'
@@ -229,6 +230,10 @@ function participant(
     ds: participantId === 'ally_001' ? 100 : 0,
     mpr: 1,
     hpr: 0,
+    ad: participantId === 'ally_001' ? 18 : 12,
+    ap: participantId === 'ally_001' ? 8 : 4,
+    ar: participantId === 'ally_001' ? 10 : 6,
+    mr: participantId === 'ally_001' ? 6 : 4,
     draw_gauge: 0,
     hand,
     draw_pile: [],
@@ -419,9 +424,8 @@ describe('App', () => {
     expect(normalText).not.toContain('yes')
     expect(normalText).not.toContain('Mana Gauge')
     expect(normalText).not.toContain('Health Gauge')
-    expect(normalText).toContain('HPR')
-    expect(normalText).toContain('MPR')
-    expect(normalText).toContain('なし')
+    expect(normalText).not.toContain('HPR')
+    expect(normalText).not.toContain('MPR')
     wrapper.unmount()
   })
 
@@ -435,8 +439,9 @@ describe('App', () => {
     const normalText = wrapper.find('.battlefield-panel').text()
     expect(normalText).toContain('戦士')
     expect(normalText).toContain('ゴブリン')
-    expect(normalText).toContain('精神集中')
-    expect(normalText).toContain('治癒')
+    expect(normalText).toContain('手札 2 / 7')
+    expect(normalText).not.toContain('精神集中')
+    expect(normalText).not.toContain('治癒')
     expect(normalText).not.toContain('card_focus')
     expect(normalText).not.toContain('ally_001')
     wrapper.unmount()
@@ -458,8 +463,8 @@ describe('App', () => {
     expect(wrapper.find('.action-summary').text()).toContain('「火球」を選択')
     expect(wrapper.find('.action-summary').text()).toContain('敵・ゴブリンに12ダメージ')
     expect(wrapper.find('.action-summary').text()).toContain('次の行動：ゴブリン')
-    expect(wrapper.find('.combatant-actor').text()).toContain('今回の行動者')
-    expect(wrapper.find('.combatant-attack-target').text()).toContain('攻撃対象')
+    expect(wrapper.find('.participant-compact-actor').text()).toContain('行動中')
+    expect(wrapper.find('.participant-compact-attack-target').text()).toContain('攻撃対象')
     expect(wrapper.findAll('h2').map((heading) => heading.text())).not.toContain('Action Result')
     wrapper.unmount()
   })
@@ -472,18 +477,31 @@ describe('App', () => {
     await wrapper.findAll('button').find((button) => button.text() === '最後')?.trigger('click')
     await vi.runOnlyPendingTimersAsync()
 
-    expect(wrapper.find('.combatant-defeated').text()).toContain('戦闘不能')
+    expect(wrapper.find('.participant-compact-defeated').text()).toContain('戦闘不能')
     wrapper.unmount()
   })
 
   test('debug area exposes internal ids and raw events', async () => {
     const wrapper = await mountLoadedApp()
+    await wrapper.get('[data-tab="events"]').trigger('click')
     const debugText = wrapper.find('.debug-panel').text()
 
     expect(debugText).toContain('生イベント')
     expect(debugText).toContain('event_id=1')
     expect(debugText).toContain('participant_id: ally_001')
     expect(debugText).toContain('character_master_id: character_ally_001')
+    wrapper.unmount()
+  })
+
+  test('renders one row per lane and keeps details in inspector', async () => {
+    const wrapper = await mountLoadedApp()
+
+    expect(wrapper.findAll('.battle-lane-row')).toHaveLength(3)
+    expect(wrapper.findAll('.participant-compact')).toHaveLength(2)
+    expect(wrapper.find('.replay-inspector').exists()).toBe(true)
+    expect(wrapper.find('.rule-config-panel').exists()).toBe(false)
+    expect(wrapper.find('.panel-header').exists()).toBe(false)
+
     wrapper.unmount()
   })
 

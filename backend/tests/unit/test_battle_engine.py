@@ -16,6 +16,7 @@
 - card_held.reasonは具体的な理由になる
 - gauge_changedはbefore/gain/trigger_count/afterを返す
 - Snapshotはacted_actor_idとnext_actor_idを返す
+- Snapshotは戦闘計算に使用するAD / AP / AR / MRを返す
 - M3はTOP味方から固定スロット順でActionを進める
 - M3は本番Deck Runtimeで初期手札3・最大手札7・overflow discardを行う
 - M3は最古カードだけを使用判定し、使用不能なら後続カードを探索しない
@@ -815,18 +816,26 @@ def test_scenario_validation_rejects_invalid_participant_setup(
 
 
 def test_m3_uses_fixed_lane_turn_order_and_snapshot_contract() -> None:
+    participants = m3_lane_participants(
+        top_ally_deck=[m3_damage_card("card_top", 1)],
+        mid_ally_deck=[
+            m3_damage_card("card_mid_1", 1000),
+            m3_damage_card("card_mid_2", 1000),
+            m3_damage_card("card_mid_3", 1000),
+        ],
+    )
+    participants[0] = m3_participant(
+        "top_ally",
+        "ally",
+        "top",
+        [m3_damage_card("card_top", 1)],
+        ad=18,
+        ap=8,
+        ar=10,
+        mr=6,
+    )
     replay = BattleEngine().simulate(
-        m3_scenario(
-            m3_lane_participants(
-                top_ally_deck=[m3_damage_card("card_top", 1)],
-                mid_ally_deck=[
-                    m3_damage_card("card_mid_1", 1000),
-                    m3_damage_card("card_mid_2", 1000),
-                    m3_damage_card("card_mid_3", 1000),
-                ],
-            ),
-            rule_config=BattleRuleConfig(nexus_max_hp=1),
-        )
+        m3_scenario(participants, rule_config=BattleRuleConfig(nexus_max_hp=1))
     )
 
     action_started = [
@@ -845,6 +854,12 @@ def test_m3_uses_fixed_lane_turn_order_and_snapshot_contract() -> None:
     top_snapshot = replay.snapshots[0].participants["top_ally"]
     assert top_snapshot.lane_id == "top"
     assert top_snapshot.position == 0
+    assert (top_snapshot.ad, top_snapshot.ap, top_snapshot.ar, top_snapshot.mr) == (
+        18,
+        8,
+        10,
+        6,
+    )
     assert replay.snapshots[0].nexus_states["enemy"].hp == 1
     assert replay.snapshots[0].applied_rule_config is not None
 

@@ -2,6 +2,7 @@
 テスト一覧:
 - 同一Card IDが複数枚ある手札を表示できる
 - 重複Card IDでVue duplicate key warningを発生させない
+- Unit詳細にAD / AP / AR / MRを表示する
 */
 
 import { mount } from '@vue/test-utils'
@@ -31,6 +32,10 @@ const participant: ParticipantSnapshot = {
   ds: 20,
   mpr: 1,
   hpr: 0,
+  ad: 18,
+  ap: 8,
+  ar: 10,
+  mr: 6,
   draw_gauge: 40,
   hand: ['card_fire_ball', 'card_fire_ball'],
   draw_pile: [],
@@ -57,6 +62,10 @@ describe('ParticipantCard', () => {
 
     expect(wrapper.findAll('.card-chip')).toHaveLength(2)
     expect(wrapper.text().match(/火球/g)).toHaveLength(2)
+    expect(wrapper.text()).toContain('AD18')
+    expect(wrapper.text()).toContain('AP8')
+    expect(wrapper.text()).toContain('AR10')
+    expect(wrapper.text()).toContain('MR6')
     expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('Duplicate keys'))
 
     wrapper.unmount()

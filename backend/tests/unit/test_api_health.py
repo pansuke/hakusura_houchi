@@ -4,6 +4,7 @@
 - master-data status API は source と generated のパスを返す
 - battle prototype status API はM3の準備状態を返す
 - battle simulate API はReplayを返す
+- battle simulate API のSnapshotはAD / AP / AR / MRを返す
 - battle simulate API は不正Scenarioを422で返す
 - battle simulate API は不正なenum相当値を422で返す
 - dev battle-rule-config API はdefault取得・atomic保存・422検証を行う
@@ -62,6 +63,10 @@ def valid_battle_payload() -> dict[str, object]:
                 "ds": 0,
                 "mpr": 0,
                 "hpr": 0,
+                "ad": 18,
+                "ap": 8,
+                "ar": 10,
+                "mr": 6,
                 "deck": [
                     {
                         "card_id": "card_slash",
@@ -105,6 +110,11 @@ def test_battle_simulate_api_returns_replay() -> None:
     payload = response.json()
     assert payload["summary"]["result"] == "ally_win"
     assert payload["snapshots"][0]["action_index"] == 0
+    ally_snapshot = payload["snapshots"][0]["participants"]["ally_001"]
+    assert {
+        key: ally_snapshot[key]
+        for key in ("ad", "ap", "ar", "mr")
+    } == {"ad": 18, "ap": 8, "ar": 10, "mr": 6}
     assert any(event["event_type"] == "battle_completed" for event in payload["events"])
     assert payload["display_catalog"]["participants"]["ally_001"]["name"] == "名称未設定"
     assert payload["display_catalog"]["cards"]["card_slash"]["name"] == "名称未設定"

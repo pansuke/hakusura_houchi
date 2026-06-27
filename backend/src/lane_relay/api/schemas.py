@@ -133,6 +133,10 @@ class ParticipantSnapshotResponse(ApiSchema):
     ds: int
     mpr: int
     hpr: int
+    ad: int
+    ap: int
+    ar: int
+    mr: int
     draw_gauge: int
     hand: list[str]
     draw_pile: list[str]

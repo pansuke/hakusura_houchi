@@ -3,6 +3,10 @@
   "name": "治癒",
   "rarity": "common",
   "mp_cost": 1,
+  "support": {
+    "enabled": false,
+    "request_reduction": 0
+  },
   "effects": [
     {
       "type": "heal",

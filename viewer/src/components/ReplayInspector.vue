@@ -61,6 +61,9 @@
           <label>復活待ち<input :value="ruleConfig.respawn_skip_turns" min="0" type="number" @input="updateNumber('respawn_skip_turns', $event)" /></label>
           <label>Nexus HP<input :value="ruleConfig.nexus_max_hp" min="1" type="number" @input="updateNumber('nexus_max_hp', $event)" /></label>
           <label>防御定数<input :value="ruleConfig.defense_constant" min="1" type="number" @input="updateNumber('defense_constant', $event)" /></label>
+          <label>支援要請上限<input :value="ruleConfig.support_request_max ?? 9" min="1" type="number" @input="updateNumber('support_request_max', $event)" /></label>
+          <label>通常効果倍率BP<input :value="ruleConfig.support_normal_effect_multiplier_bp ?? 1000" min="0" max="10000" type="number" @input="updateNumber('support_normal_effect_multiplier_bp', $event)" /></label>
+          <label>通常要請減少<input :value="ruleConfig.support_normal_request_reduction ?? 1" min="0" type="number" @input="updateNumber('support_normal_request_reduction', $event)" /></label>
         </div>
         <button type="button" :disabled="isBusy" @click="emit('save-config')">設定を保存して再読込</button>
       </section>
@@ -86,6 +89,9 @@ type EditableRuleKey =
   | 'respawn_skip_turns'
   | 'nexus_max_hp'
   | 'defense_constant'
+  | 'support_request_max'
+  | 'support_normal_effect_multiplier_bp'
+  | 'support_normal_request_reduction'
 
 const props = defineProps<{
   replay: BattleReplay

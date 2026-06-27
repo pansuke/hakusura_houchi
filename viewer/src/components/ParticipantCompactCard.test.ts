@@ -4,6 +4,7 @@
 - 行動者・攻撃対象・戦闘不能の状態を視覚識別できる
 - カード名やHPR・MPRなどの詳細情報は概要へ表示しない
 - クリックするとInspector選択用のparticipant IDを通知する
+- SUPPORTは同じカード骨格でHPを持たずMP・DS・MPR・手札を表示する
 */
 
 import { mount } from '@vue/test-utils'
@@ -75,5 +76,35 @@ describe('ParticipantCompactCard', () => {
 
     expect(wrapper.emitted('select')).toEqual([['ally_001']])
     expect(wrapper.text()).toContain('次行動')
+  })
+
+  test('renders support variant with the shared compact card', () => {
+    const wrapper = mount(ParticipantCompactCard, {
+      props: {
+        participant: {
+          ...participant,
+          slot_type: 'support',
+          hp: null,
+          max_hp: null,
+          alive: null,
+          hpr: null,
+          position: null,
+          push: null,
+        },
+        catalog,
+        isActor: false,
+        isNext: true,
+        targetKind: null,
+      },
+    })
+
+    expect(wrapper.classes()).toContain('participant-compact-support')
+    expect(wrapper.text()).toContain('SUPPORT')
+    expect(wrapper.text()).toContain('MP3 / 5')
+    expect(wrapper.text()).toContain('DS60 / 100')
+    expect(wrapper.text()).toContain('MPR +1')
+    expect(wrapper.text()).toContain('手札 1 / 7')
+    expect(wrapper.text()).not.toContain('HP')
+    expect(wrapper.text()).not.toContain('PUSH')
   })
 })

@@ -3,7 +3,7 @@
     class="combatant"
     :class="{
       'combatant-actor': isActor,
-      'combatant-defeated': !participant.alive,
+      'combatant-defeated': participant.alive === false,
       'combatant-attack-target': targetKind === 'attack',
       'combatant-heal-target': targetKind === 'heal',
     }"
@@ -12,16 +12,17 @@
       <div>
         <p class="combatant-side">{{ title }}</p>
         <h2 v-if="isActor">{{ uiLabels.acted }}</h2>
-        <h2 v-else-if="!participant.alive">{{ uiLabels.defeated }}</h2>
+        <h2 v-else-if="participant.alive === false">{{ uiLabels.defeated }}</h2>
         <h2 v-else-if="isNext">{{ uiLabels.nextActor }}</h2>
       </div>
       <span v-if="targetKind === 'attack'" class="target-note">{{ uiLabels.attackTarget }}</span>
       <span v-else-if="targetKind === 'heal'" class="target-note heal">{{ uiLabels.healTarget }}</span>
     </div>
 
-    <p v-if="!participant.alive" class="defeated-text">{{ uiLabels.defeated }}</p>
+    <p v-if="participant.alive === false" class="defeated-text">{{ uiLabels.defeated }}</p>
 
     <dl>
+      <div><dt>Slot</dt><dd>{{ participant.slot_type === 'support' ? 'SUPPORT' : 'LANE' }}</dd></div>
       <div v-if="participant.lane_id"><dt>Lane</dt><dd>{{ participant.lane_id.toUpperCase() }}</dd></div>
       <div v-if="participant.position !== null && participant.position !== undefined">
         <dt>Position</dt><dd>{{ participant.position }}</dd>
@@ -32,7 +33,7 @@
       <div v-if="participant.respawn_turns_remaining !== null && participant.respawn_turns_remaining !== undefined">
         <dt>復活待ち</dt><dd>{{ participant.respawn_turns_remaining }}</dd>
       </div>
-      <div><dt>{{ uiLabels.hp }}</dt><dd>{{ participant.hp }} / {{ participant.max_hp }}</dd></div>
+      <div v-if="participant.slot_type !== 'support'"><dt>{{ uiLabels.hp }}</dt><dd>{{ participant.hp }} / {{ participant.max_hp }}</dd></div>
       <div><dt>{{ uiLabels.mp }}</dt><dd>{{ participant.mp }} / {{ participant.max_mp }}</dd></div>
     </dl>
 
@@ -49,7 +50,7 @@
     <section class="stat-section">
       <h3>{{ uiLabels.actionRecovery }}</h3>
       <dl>
-        <div><dt>{{ uiLabels.hpr }}</dt><dd>{{ recoveryText(participant.hpr) }}</dd></div>
+        <div v-if="participant.slot_type !== 'support'"><dt>{{ uiLabels.hpr }}</dt><dd>{{ recoveryText(participant.hpr ?? 0) }}</dd></div>
         <div><dt>{{ uiLabels.mpr }}</dt><dd>{{ recoveryText(participant.mpr) }}</dd></div>
       </dl>
     </section>

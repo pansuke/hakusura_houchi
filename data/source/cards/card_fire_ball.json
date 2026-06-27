@@ -3,6 +3,10 @@
   "name": "火球",
   "rarity": "common",
   "mp_cost": 3,
+  "support": {
+    "enabled": true,
+    "request_reduction": 3
+  },
   "effects": [
     {
       "type": "damage",

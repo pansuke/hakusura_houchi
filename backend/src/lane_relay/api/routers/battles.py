@@ -73,6 +73,8 @@ def to_scenario(request: BattleSimulateRequest) -> BattleScenario:
                 ar=participant.ar,
                 mr=participant.mr,
                 push=participant.push,
+                slot_type=participant.slot_type,
+                trait_ids=tuple(participant.trait_ids),
                 deck=[
                     BattleCard(
                         card_id=card.card_id,
@@ -91,6 +93,8 @@ def to_scenario(request: BattleSimulateRequest) -> BattleScenario:
                             )
                             for effect in card.effects
                         ],
+                        support_enabled=card.support.enabled,
+                        support_request_reduction=card.support.request_reduction,
                     )
                     for card in participant.deck
                 ],
@@ -115,6 +119,13 @@ def to_scenario(request: BattleSimulateRequest) -> BattleScenario:
             simulation_safety_limit=request.rule_config.simulation_safety_limit,
             simulation_card_play_limit_per_action=(
                 request.rule_config.simulation_card_play_limit_per_action
+            ),
+            support_request_max=request.rule_config.support_request_max,
+            support_normal_effect_multiplier_bp=(
+                request.rule_config.support_normal_effect_multiplier_bp
+            ),
+            support_normal_request_reduction=(
+                request.rule_config.support_normal_request_reduction
             ),
         ),
     )

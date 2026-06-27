@@ -204,6 +204,13 @@ function buildMovementPhase(events: BattleEvent[]): ActionPhaseView {
         importance: 'secondary',
       })
     }
+    if (event.event_type === 'support_lane_selected') {
+      items.push({
+        label: `支援先：${String(event.payload.selected_lane_id ?? '-').toUpperCase()}レーン`,
+        detail: `選択理由：${String(event.payload.selection_reason ?? '-')}`,
+        importance: 'primary',
+      })
+    }
   }
   if (!items.length) {
     items.push({ label: '移動・対面変化なし', importance: 'secondary' })
@@ -369,6 +376,9 @@ function buildEffectResultPhase(
       'nexus_damaged',
       'nexus_destroyed',
       'grant_card_play',
+      'support_request_changed',
+      'support_effect_reduced',
+      'gauge_changed',
     ].includes(event.event_type),
   )
 
@@ -383,6 +393,9 @@ function buildEffectResultPhase(
       continue
     }
     if (event.event_type === 'card_draw_blocked' && event.payload.draw_source !== 'card_effect') {
+      continue
+    }
+    if (event.event_type === 'gauge_changed' && event.payload.reason !== 'card_effect') {
       continue
     }
     if (event.event_type === 'damage_applied') {
@@ -454,6 +467,30 @@ function buildEffectResultPhase(
     if (event.event_type === 'character_defeated') {
       items.push({
         label: `${participantName(catalog, event.actor_id)}は戦闘不能になりました`,
+        importance: 'primary',
+      })
+    }
+    if (event.event_type === 'support_effect_reduced') {
+      items.push({
+        label: `通常カード効果：${numberPayload(event, 'multiplier_bp') / 100}%へ減少`,
+        importance: 'primary',
+      })
+    }
+    if (event.event_type === 'support_request_changed') {
+      items.push({
+        label: `${String(event.payload.lane_id ?? '-').toUpperCase()}支援要請：${numberPayload(
+          event,
+          'before',
+        )} → ${numberPayload(event, 'after')}`,
+        importance: 'primary',
+      })
+    }
+    if (event.event_type === 'gauge_changed') {
+      items.push({
+        label: `${participantName(catalog, event.actor_id)}のドロー進捗：${numberPayload(
+          event,
+          'before',
+        )} → ${numberPayload(event, 'after')}`,
         importance: 'primary',
       })
     }

@@ -87,3 +87,43 @@
 - Context: 自動再生タイマーと手動操作が同時にcursorを進めると、Actionを飛ばして表示する可能性がある。
 - Decision: 自動再生中は最初・前へ・次へ・+10・+100・最後・Jumpを無効化し、一時停止ボタンだけ操作可能にする。
 - Impact: 自動再生と手動操作の競合をM2ではUI制御で防ぐ。
+
+## DEC-011: SUPPORTを8Slot Schedulerへ追加する
+
+- Status: Accepted
+- Date: 2026-06-27
+- Context: M4-Aでは各SideをTOP / MID / BOT / SUPPORTの4体編成へ拡張する。
+- Decision: 固定順をTOP味方、TOP敵、MID味方、MID敵、BOT味方、BOT敵、SUPPORT味方、SUPPORT敵とする。
+- Impact: SUPPORTも通常Action Indexを持ち、支援要請0でもActionを実行する。
+
+## DEC-012: SUPPORT Runtimeからレーン固有Stateを除外する
+
+- Status: Accepted
+- Date: 2026-06-27
+- Context: SUPPORTはレーン上のCharacterではなく、支援先を選択してカードを使用する。
+- Decision: SUPPORTはMP / MPR / DS / Draw Gauge / Deck Runtimeを持ち、HP / HPR / 位置 / PUSH / 対面 / 死亡 / 復活を持たない。
+- Impact: SUPPORT Snapshotのレーン固有Stateは`null`とし、通常の死亡・復活・移動処理へ流さない。
+
+## DEC-013: 支援先はAction開始時に決定して固定する
+
+- Status: Accepted
+- Date: 2026-06-27
+- Context: 同一Action内で追加カード使用権が発生しても、支援先がカードごとに変わるとReplay検証が複雑になる。
+- Decision: 最大支援要請レーンを選び、同値または全0は専用Seed付きRNGで選択し、同一Action中は固定する。
+- Impact: SUPPORTのlocal / adjacent / globalは選択支援レーンを基準に解決し、Nexusは対象にしない。
+
+## DEC-014: 支援属性と支援要請EffectをSchema化する
+
+- Status: Accepted
+- Date: 2026-06-27
+- Context: 支援属性カードと通常カードをデータで識別し、レーナーから支援要請を追加する必要がある。
+- Decision: CardMasterは`support.enabled`と`support.request_reduction`を持ち、支援要請増加Effectは`add_support_request`とする。
+- Impact: 支援要請は0～9へclampし、カード使用成功後だけ選択支援レーンから減少する。
+
+## DEC-015: SUPPORT通常カードは対象効果を10%へ減衰する
+
+- Status: Accepted
+- Date: 2026-06-27
+- Context: SUPPORTは通常Deckを利用できるが、レーナーと同等性能では編成上の役割が崩れる。
+- Decision: 非支援カードのDamage / Heal / Draw Gauge増加へ1000BPを適用する。Damageは防御計算前、Heal / Draw Gauge増加は倍率後切り捨てとする。
+- Impact: Damageは既存最低値を適用し、通常カード使用成功後は支援要請を1減らす。

@@ -13,7 +13,14 @@ const nexusBreakerDeck = [
         damage_type: 'magic',
         base_damage: 2000,
       },
+      {
+        effect_type: 'add_support_request',
+        target: 'self',
+        value: 3,
+        scope: 'local',
+      },
     ],
+    support: { enabled: true, request_reduction: 3 },
   },
   {
     card_id: 'card_claw',
@@ -28,6 +35,7 @@ const nexusBreakerDeck = [
         base_damage: 2000,
       },
     ],
+    support: { enabled: false, request_reduction: 0 },
   },
   {
     card_id: 'card_fire_ball',
@@ -42,6 +50,7 @@ const nexusBreakerDeck = [
         base_damage: 2000,
       },
     ],
+    support: { enabled: true, request_reduction: 3 },
   },
 ] satisfies BattleScenarioRequest['participants'][number]['deck']
 
@@ -59,6 +68,23 @@ const fillerDeck = [
         base_damage: 1,
       },
     ],
+    support: { enabled: false, request_reduction: 0 },
+  },
+] satisfies BattleScenarioRequest['participants'][number]['deck']
+
+const allySupportDeck = [
+  {
+    card_id: 'card_focus',
+    mp_cost: 0,
+    effects: [
+      {
+        effect_type: 'gain_draw_gauge',
+        target: 'self',
+        value: 40,
+        scope: 'local',
+      },
+    ],
+    support: { enabled: true, request_reduction: 3 },
   },
 ] satisfies BattleScenarioRequest['participants'][number]['deck']
 
@@ -179,8 +205,55 @@ export const m3Scenario: BattleScenarioRequest = {
       push: 60,
       deck: fillerDeck,
     },
+    {
+      participant_id: 'support_ally',
+      side: 'ally',
+      slot_type: 'support',
+      character_master_id: 'character_warrior_001',
+      max_hp: 32,
+      max_mp: 5,
+      initial_hp: 32,
+      initial_mp: 5,
+      ds: 20,
+      mpr: 1,
+      hpr: 2,
+      ad: 8,
+      ap: 18,
+      ar: 8,
+      mr: 10,
+      push: 0,
+      deck: allySupportDeck,
+    },
+    {
+      participant_id: 'support_enemy',
+      side: 'enemy',
+      slot_type: 'support',
+      character_master_id: 'character_enemy_001',
+      max_hp: 24,
+      max_mp: 3,
+      initial_hp: 24,
+      initial_mp: 3,
+      ds: 20,
+      mpr: 1,
+      hpr: 0,
+      ad: 12,
+      ap: 4,
+      ar: 6,
+      mr: 4,
+      push: 0,
+      deck: fillerDeck,
+    },
   ],
-  turn_order: ['top_ally', 'top_enemy', 'mid_ally', 'mid_enemy', 'bot_ally', 'bot_enemy'],
+  turn_order: [
+    'top_ally',
+    'top_enemy',
+    'mid_ally',
+    'mid_enemy',
+    'bot_ally',
+    'bot_enemy',
+    'support_ally',
+    'support_enemy',
+  ],
   seed: 3,
   rule_config: {
     initial_hand_size: 3,
@@ -197,5 +270,8 @@ export const m3Scenario: BattleScenarioRequest = {
     minimum_damage: 1,
     simulation_safety_limit: 80,
     simulation_card_play_limit_per_action: 100,
+    support_request_max: 9,
+    support_normal_effect_multiplier_bp: 1000,
+    support_normal_request_reduction: 1,
   },
 }

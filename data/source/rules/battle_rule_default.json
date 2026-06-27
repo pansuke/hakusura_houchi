@@ -12,5 +12,8 @@
   "defense_constant": 100,
   "minimum_damage": 1,
   "simulation_safety_limit": 1000,
-  "simulation_card_play_limit_per_action": 100
+  "simulation_card_play_limit_per_action": 100,
+  "support_request_max": 9,
+  "support_normal_effect_multiplier_bp": 1000,
+  "support_normal_request_reduction": 1
 }

@@ -13,14 +13,15 @@ export type ParticipantSnapshot = {
   participant_id: string
   character_master_id: string
   side: string
-  hp: number
-  max_hp: number
+  slot_type?: 'lane' | 'support'
+  hp: number | null
+  max_hp: number | null
   mp: number
   max_mp: number
-  alive: boolean
+  alive: boolean | null
   ds: number
   mpr: number
-  hpr: number
+  hpr: number | null
   ad: number
   ap: number
   ar: number
@@ -34,6 +35,7 @@ export type ParticipantSnapshot = {
   push?: number | null
   engaged_with_participant_id?: string | null
   respawn_turns_remaining?: number | null
+  trait_ids?: string[]
 }
 
 export type NexusSnapshot = {
@@ -59,6 +61,9 @@ export type BattleRuleConfig = {
   minimum_damage: number
   simulation_safety_limit: number
   simulation_card_play_limit_per_action: number
+  support_request_max?: number
+  support_normal_effect_multiplier_bp?: number
+  support_normal_request_reduction?: number
 }
 
 export type BattleSnapshot = {
@@ -69,6 +74,7 @@ export type BattleSnapshot = {
   next_actor_id: string | null
   participants: Record<string, ParticipantSnapshot>
   nexus_states?: Record<string, NexusSnapshot>
+  support_requests?: Record<'ally' | 'enemy', Record<'top' | 'mid' | 'bot', number>>
   applied_rule_config?: BattleRuleConfig | null
 }
 
@@ -89,7 +95,14 @@ export type DisplayCatalog = {
 }
 
 export type BattleEffectRequest = {
-  effect_type: 'damage' | 'heal' | 'gain_mana' | 'draw_card' | 'grant_card_play'
+  effect_type:
+    | 'damage'
+    | 'heal'
+    | 'gain_mana'
+    | 'draw_card'
+    | 'grant_card_play'
+    | 'add_support_request'
+    | 'gain_draw_gauge'
   target: 'self' | 'enemy'
   value: number
   scope?: 'local' | 'adjacent' | 'global'
@@ -102,6 +115,10 @@ export type BattleCardRequest = {
   card_id: string
   mp_cost: number
   effects: BattleEffectRequest[]
+  support?: {
+    enabled: boolean
+    request_reduction?: number
+  }
 }
 
 export type BattleParticipantRequest = {
@@ -122,6 +139,8 @@ export type BattleParticipantRequest = {
   ar?: number
   mr?: number
   push?: number
+  slot_type?: 'lane' | 'support'
+  trait_ids?: string[]
 }
 
 export type BattleScenarioRequest = {

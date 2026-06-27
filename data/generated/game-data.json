@@ -15,7 +15,11 @@
       "id": "card_claw",
       "mp_cost": 0,
       "name": "ひっかき",
-      "rarity": "common"
+      "rarity": "common",
+      "support": {
+        "enabled": false,
+        "request_reduction": 0
+      }
     },
     {
       "effects": [
@@ -32,7 +36,11 @@
       "id": "card_fire_ball",
       "mp_cost": 3,
       "name": "火球",
-      "rarity": "common"
+      "rarity": "common",
+      "support": {
+        "enabled": true,
+        "request_reduction": 3
+      }
     },
     {
       "effects": [
@@ -47,7 +55,11 @@
       "id": "card_focus",
       "mp_cost": 0,
       "name": "精神集中",
-      "rarity": "common"
+      "rarity": "common",
+      "support": {
+        "enabled": false,
+        "request_reduction": 0
+      }
     },
     {
       "effects": [
@@ -62,7 +74,11 @@
       "id": "card_recover",
       "mp_cost": 1,
       "name": "治癒",
-      "rarity": "common"
+      "rarity": "common",
+      "support": {
+        "enabled": false,
+        "request_reduction": 0
+      }
     }
   ],
   "characters": [

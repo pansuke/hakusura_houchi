@@ -39,6 +39,11 @@ def participant_from_character_master(
         ar=_int_value(combat_stats, "ar"),
         mr=_int_value(combat_stats, "mr"),
         push=_int_value(combat_stats, "push"),
+        trait_ids=tuple(
+            trait_id
+            for trait_id in character_master.get("trait_ids", [])
+            if isinstance(trait_id, str)
+        ),
         deck=deck,
     )
 

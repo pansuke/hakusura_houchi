@@ -29,7 +29,15 @@ class DamageScalingRequest(ApiSchema):
 
 
 class BattleEffectRequest(ApiSchema):
-    effect_type: Literal["damage", "heal", "gain_mana", "draw_card", "grant_card_play"]
+    effect_type: Literal[
+        "damage",
+        "heal",
+        "gain_mana",
+        "draw_card",
+        "grant_card_play",
+        "add_support_request",
+        "gain_draw_gauge",
+    ]
     target: Literal["self", "enemy"]
     value: int = Field(ge=1)
     scope: Literal["local", "adjacent", "global"] = "local"
@@ -51,10 +59,22 @@ class BattleEffectRequest(ApiSchema):
         return self
 
 
+class CardSupportRequest(ApiSchema):
+    enabled: bool = False
+    request_reduction: int = Field(default=0, ge=0)
+
+    @model_validator(mode="after")
+    def validate_support(self) -> "CardSupportRequest":
+        if not self.enabled and self.request_reduction:
+            raise ValueError("disabled support card must not define request_reduction")
+        return self
+
+
 class BattleCardRequest(ApiSchema):
     card_id: str
     mp_cost: int = Field(ge=0)
     effects: list[BattleEffectRequest]
+    support: CardSupportRequest = Field(default_factory=CardSupportRequest)
 
 
 class BattleParticipantRequest(ApiSchema):
@@ -75,6 +95,8 @@ class BattleParticipantRequest(ApiSchema):
     ar: int = Field(default=0, ge=0)
     mr: int = Field(default=0, ge=0)
     push: int = Field(default=0, ge=0)
+    slot_type: Literal["lane", "support"] = "lane"
+    trait_ids: list[str] = Field(default_factory=list)
 
 
 class BattleRuleConfigRequest(ApiSchema):
@@ -92,6 +114,9 @@ class BattleRuleConfigRequest(ApiSchema):
     minimum_damage: int = Field(default=1, ge=1)
     simulation_safety_limit: int = Field(default=1000, ge=1, le=100000)
     simulation_card_play_limit_per_action: int = Field(default=100, ge=1, le=10000)
+    support_request_max: int = Field(default=9, ge=1)
+    support_normal_effect_multiplier_bp: int = Field(default=1000, ge=0, le=10000)
+    support_normal_request_reduction: int = Field(default=1, ge=0)
 
     @model_validator(mode="after")
     def validate_rule_config(self) -> "BattleRuleConfigRequest":
@@ -125,14 +150,15 @@ class ParticipantSnapshotResponse(ApiSchema):
     participant_id: str
     character_master_id: str
     side: Literal["ally", "enemy"]
-    hp: int
-    max_hp: int
+    slot_type: Literal["lane", "support"]
+    hp: int | None
+    max_hp: int | None
     mp: int
     max_mp: int
-    alive: bool
+    alive: bool | None
     ds: int
     mpr: int
-    hpr: int
+    hpr: int | None
     ad: int
     ap: int
     ar: int
@@ -146,6 +172,7 @@ class ParticipantSnapshotResponse(ApiSchema):
     push: int | None = None
     engaged_with_participant_id: str | None = None
     respawn_turns_remaining: int | None = None
+    trait_ids: list[str] = Field(default_factory=list)
 
 
 class NexusSnapshotResponse(ApiSchema):
@@ -171,6 +198,9 @@ class BattleRuleConfigResponse(ApiSchema):
     minimum_damage: int
     simulation_safety_limit: int
     simulation_card_play_limit_per_action: int
+    support_request_max: int
+    support_normal_effect_multiplier_bp: int
+    support_normal_request_reduction: int
 
 
 class BattleSnapshotResponse(ApiSchema):
@@ -181,15 +211,18 @@ class BattleSnapshotResponse(ApiSchema):
     next_actor_id: str | None
     participants: dict[str, ParticipantSnapshotResponse]
     nexus_states: dict[str, NexusSnapshotResponse] = Field(default_factory=dict)
+    support_requests: dict[
+        Literal["ally", "enemy"], dict[Literal["top", "mid", "bot"], int]
+    ] = Field(default_factory=dict)
     applied_rule_config: BattleRuleConfigResponse | None = None
 
 
 class ParticipantSummaryResponse(ApiSchema):
     participant_id: str
     side: Literal["ally", "enemy"]
-    hp: int
+    hp: int | None
     mp: int
-    alive: bool
+    alive: bool | None
     damage_dealt: int
     damage_taken: int
     cards_used: int

@@ -1,7 +1,7 @@
 # 放置系 × ハクスラ × デッキ構築 RPG
-# 開発方針・WBS v1.3
+# 開発方針・WBS v1.4
 
-更新日: 2026-06-24
+更新日: 2026-06-27
 対象: プロトタイプ開始からSteam向け製品化判断まで
 
 ---
@@ -179,16 +179,49 @@ Status: Done
 
 ## M4-A: SUPPORT
 
+Status: Done
 
 対象:
 
-- SUPPORT配置
-- HPなし
-- 攻撃・回復補正
-- Trait維持
-- 支援要請
-- 支援量
-- 支援対象
+- 1チーム1SUPPORT
+- TOP / MID / BOT / SUPPORTの4体編成
+- 8Slot固定Scheduler
+- SUPPORTの通常Deck Runtime
+- SUPPORT専用Runtime State
+- レーン別支援要請0～9
+- Seed付き支援先選択
+- 支援属性カード
+- 支援要請減少
+- 通常カードの90%減少
+- SUPPORT Event / Snapshot / Viewer
+- Trait参照保持（Trait RuntimeはM4-B）
+
+確定済み:
+
+- SUPPORTは通常の行動機会を持つ
+- Scheduler順はTOP味方→TOP敵→MID味方→MID敵→BOT味方→BOT敵→SUPPORT味方→SUPPORT敵
+- 支援要請が0でもSUPPORT Slotは実行する
+- 支援先は最大要請レーン。同値または全0はSeed付きrandom
+- SUPPORTはMP / MPR / DS / Deckを持つ
+- SUPPORTはHP / HPR / 位置 / PUSH / 対面 / 死亡 / 復活を持たない
+- SUPPORTは通常Deckを使用する
+- 支援属性カードの記載値は使用条件ではなく支援要請減少量
+- 通常カードは対象数値効果を90%減少し、支援先要請を1減少する
+- 同一CharacterInstanceの重複配置は禁止
+- 同じCharacterMasterの別CharacterInstanceは同時配置可能
+- CharacterのTrait参照は保持するが、Trait Runtime実行はM4-Bで行う
+
+実装時に確定した契約:
+
+- 支援要請増加Effectは`add_support_request`とし、レーナー自身のレーンへ加算する
+- 支援先はSUPPORT Action開始時に1回決定し、Action中固定する
+- localは選択支援レーン、adjacentは選択レーン基準、globalは3レーンを対象にする
+- SUPPORTからNexusは対象にしない
+- 通常カード補正はDamage / Heal / Draw Gauge増加へ適用する
+- Damageは防御計算前の基礎値とScaling合計へ倍率適用し、最終Damageに最低値を適用する
+- Heal / Draw Gauge増加は倍率適用後に切り捨てる
+- CardMasterは`support.enabled`と`support.request_reduction`を持つ
+- Viewerは戦場下部へSUPPORTとレーン別支援要請を表示する
 
 ---
 
@@ -998,6 +1031,229 @@ Status: Open
 Status: Accepted  
 Decision: 個別位置、PUSH差、Local / Adjacent / Global、Adjacent対象なし不発、Global Nexus除外、Nexus HP 8000、Nexus破壊勝敗を採用する。
 
+## DG-006: SUPPORT基本モデル
+
+期限: M4-A前
+Status: Accepted
+
+Accepted:
+
+- 1チーム1SUPPORT、TOP / MID / BOT / SUPPORTの4体編成
+- Scheduler末尾にSUPPORT味方→SUPPORT敵を追加
+- SUPPORTは通常の行動機会とAction Indexを持つ
+- SUPPORTは通常Deck、MP / MPR / DS / Draw Gaugeを持つ
+- SUPPORTはHP / HPR / 位置 / PUSH / 対面 / 死亡 / 復活を持たない
+- 支援要請はレーンごとに0～9
+- 最大要請レーンを選び、同値または全0はSeed付きrandom
+- 支援要請は使用条件ではなく、支援後に減少する優先度
+- 支援属性カードは記載値、通常カードは1だけ支援要請を減少
+- SUPPORTの通常カードは対象数値効果を90%減少
+
+Accepted:
+
+- 支援要請増加Effectは`add_support_request`
+- SUPPORTの支援先はAction中固定
+- local / adjacent / globalは選択支援レーン基準
+- SUPPORTからNexusは対象外
+- 90%減少はDamage計算前、Heal / Draw Gauge増加は倍率後切り捨て
+- CardMaster / Event / Snapshot / Viewer契約は総合設計書34章を正とする
+
 OpenのDecision Gateは、指定マイルストーン以前の開発を妨げない。
 
 ただし対象マイルストーンはDecision GateがAcceptedになるまでReadyにしない。
+---
+
+# 20. M4-A WBS
+
+## H-1. Formation / Scenario
+
+### H-1-1. TOP / MID / BOT / SUPPORT Slot
+### H-1-2. ally / enemy各4体
+### H-1-3. 同一CharacterInstance重複禁止
+### H-1-4. 同CharacterMaster別Instance許可
+### H-1-5. SUPPORTも通常Deckを使用
+
+## H-2. Scheduler
+
+### H-2-1. support/ally Slot
+### H-2-2. support/enemy Slot
+### H-2-3. 8Slot固定順
+### H-2-4. SUPPORT ActionもAction Indexを進める
+### H-2-5. 支援要請0でもSlotを省略しない
+
+固定順:
+
+```text
+top/ally
+top/enemy
+mid/ally
+mid/enemy
+bot/ally
+bot/enemy
+support/ally
+support/enemy
+```
+
+## H-3. SUPPORT Runtime
+
+### H-3-1. MP / max MP
+### H-3-2. MPR
+### H-3-3. DS / Draw Gauge
+### H-3-4. Deck Runtime
+### H-3-5. HP / max HPを持たない
+### H-3-6. HPRを持たない
+### H-3-7. position / push / engagementを持たない
+### H-3-8. death / respawnを持たない
+### H-3-9. HPR処理を実行しない
+### H-3-10. MPR / DSを通常処理する
+### H-3-11. Trait参照を保持する
+### H-3-12. Trait RuntimeはM4-Bまで実行しない
+
+## H-4. Support Request State
+
+### H-4-1. side別top / mid / bot
+### H-4-2. 初期値0
+### H-4-3. 各レーン上限9
+### H-4-4. 0未満禁止
+### H-4-5. 増加Effect
+### H-4-6. 支援属性カードによる減少
+### H-4-7. 通常カードによるデフォルト1減少
+### H-4-8. 使用失敗時は減少なし
+
+## H-5. Support Lane Resolver
+
+### H-5-1. 最大支援要請レーン
+### H-5-2. 最大値同値時のSeed付きrandom
+### H-5-3. 全レーン0時のSeed付きrandom
+### H-5-4. 独立RNG stream
+### H-5-5. 同一入力・Seed再現性
+
+## H-6. Support Card Schema
+
+### H-6-1. 支援属性
+### H-6-2. support_request_reduction
+### H-6-3. 減少量は使用条件ではない
+### H-6-4. request不足でも使用可能
+### H-6-5. 減少後0へclamp
+### H-6-6. 通常カードとの識別
+
+## H-7. Normal Card Penalty
+
+### H-7-1. 非支援カード判定
+### H-7-2. Damage 90%減少
+### H-7-3. Heal 90%減少
+### H-7-4. Draw Gauge増加90%減少
+### H-7-5. 計算順・丸め
+### H-7-6. minimum damage
+### H-7-7. 支援先要請1減少
+### H-7-8. 要請0でも使用可能
+
+## H-8. Target Resolver
+
+### H-8-1. 選択支援レーン
+### H-8-2. SUPPORT local解釈
+### H-8-3. SUPPORT adjacent解釈
+### H-8-4. SUPPORT global解釈
+### H-8-5. ally / enemy対象
+### H-8-6. Nexus対象可否
+### H-8-7. 対象なし
+
+## H-9. Event / Snapshot / Viewer
+
+### H-9-1. support_lane_selected
+### H-9-2. support_request_changed
+### H-9-3. support_effect_reduced
+### H-9-4. SUPPORT Participant Snapshot
+### H-9-5. side別支援要請Snapshot
+### H-9-6. SUPPORTカード状態
+### H-9-7. 支援先ハイライト
+### H-9-8. 支援要請0～9表示
+### H-9-9. 通常カード90%減少表示
+
+## H-10. Tests
+
+- 8Slot固定Scheduler
+- SUPPORT Action Index
+- 支援要請0でもSUPPORT行動
+- 最大要請レーン選択
+- 同値Seed付き選択
+- 全0Seed付き選択
+- 各レーン上限9
+- 支援属性カードはrequest不足でも使用可能
+- 支援属性カード記載値によるrequest減少
+- request下限0
+- 通常カードでrequest 1減少
+- 使用失敗時request不変
+- SUPPORTにHP / HPR / death / respawnなし
+- SUPPORTのMPR / DS / Deck Runtime
+- 通常カード90%減少
+- 同一入力・Seed再現性
+- Viewer表示
+
+---
+
+# 21. M4-A Definition of Ready
+
+- [x] SUPPORT人数
+- [x] 3レーナー + SUPPORTの編成
+- [x] 同一CharacterInstance重複禁止
+- [x] 同CharacterMaster別Instance許可
+- [x] SUPPORTのDeck
+- [x] SUPPORTのScheduler位置
+- [x] SUPPORTのAction Index
+- [x] 支援要請0時のAction
+- [x] SUPPORTが持つResource
+- [x] SUPPORTが持たないState
+- [x] Trait参照保持とRuntime境界
+- [x] 支援要請の意味
+- [x] 支援要請の上限9
+- [x] 支援先の優先規則
+- [x] 同値・全0時のSeed付きrandom
+- [x] 支援要請は使用条件ではない
+- [x] 支援属性カードのrequest減少
+- [x] 通常カードのrequest 1減少
+- [x] 通常カードの90%減少方針
+- [x] 支援要請増加Effect Schema
+- [x] 支援属性CardMaster Schema
+- [x] SUPPORTのtarget / scope解決
+- [x] Nexus対象可否
+- [x] 90%減少対象Effectの完全な一覧
+- [x] 90%減少の計算順・丸め
+- [x] Event契約
+- [x] Snapshot契約
+- [x] Viewer契約
+- [x] BattleRuleConfig項目
+- [x] DG-006 Accepted
+
+判定:
+
+```text
+Ready
+```
+
+---
+
+# 22. M4-A Definition of Done
+
+- [x] 1チーム4体、合計8ParticipantでBattleを完走できる
+- [x] Schedulerが8Slot固定順で巡回する
+- [x] SUPPORTが通常のAction Indexを持つ
+- [x] 支援要請0でもSUPPORTが行動する
+- [x] SUPPORTはHP / HPR / 位置 / PUSH / 対面 / 死亡 / 復活を持たない
+- [x] SUPPORTのMP / MPR / DS / Deck Runtimeが機能する
+- [x] レーン別支援要請を0～9で保持する
+- [x] 最大要請レーンを支援先に選ぶ
+- [x] 同値・全0時にSeed付きで決定的に選ぶ
+- [x] 支援属性カードはrequest不足でも使用できる
+- [x] 支援属性カードの記載値でrequestを減らす
+- [x] 通常カードでrequestを1減らす
+- [x] 使用不能時にrequestを減らさない
+- [x] 通常カードの対象効果を90%減少する
+- [x] SUPPORTのtarget / scopeが仕様通り
+- [x] 同一入力・Config・Seedで同一Replay
+- [x] SUPPORT Event / Snapshot / Viewerが整合する
+- [x] make data-validate成功
+- [x] make data-build成功
+- [x] make lint成功
+- [x] make test成功
+- [ ] coverage 85%以上

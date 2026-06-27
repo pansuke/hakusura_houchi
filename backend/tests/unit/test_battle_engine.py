@@ -25,6 +25,11 @@
 - M3はAdjacent / Global Scopeで対象を選択する
 - M3は死亡後、自分の行動機会で復活待ちを数える
 - M3はNexus破壊で勝敗を確定し、Safety Limit到達をerrorにする
+- M4は8Slot固定順でSUPPORT Actionを実行し、SUPPORT SnapshotからHP系Stateを除外する
+- M4は支援要請を0～9で保持し、最大値またはSeed付き同値選択で支援先を固定する
+- M4は支援属性カードの記載値で要請を減らし、通常カードは効果を90%減少して要請を1減らす
+- M4はカードを使用できない場合に支援要請を減らさない
+- M4は選択支援レーン基準でAdjacent対象を解決し、Nexusへ転送しない
 """
 
 from dataclasses import asdict
@@ -96,6 +101,47 @@ def m3_damage_card(
                 damage_type=damage_type,
                 base_damage=base_damage,
                 scaling=scaling or [],
+            )
+        ],
+    )
+
+
+def support_damage_card(
+    card_id: str,
+    value: int,
+    *,
+    enabled: bool,
+    request_reduction: int = 0,
+    mp_cost: int = 0,
+    scope: str = "local",
+) -> BattleCard:
+    return BattleCard(
+        card_id=card_id,
+        mp_cost=mp_cost,
+        effects=[
+            BattleEffect(
+                effect_type="damage",
+                target="enemy",
+                value=value,
+                damage_type="true",
+                base_damage=value,
+                scope=scope,
+            )
+        ],
+        support_enabled=enabled,
+        support_request_reduction=request_reduction,
+    )
+
+
+def add_support_request_card(card_id: str, amount: int) -> BattleCard:
+    return BattleCard(
+        card_id=card_id,
+        mp_cost=0,
+        effects=[
+            BattleEffect(
+                effect_type="add_support_request",
+                target="self",
+                value=amount,
             )
         ],
     )
@@ -233,6 +279,55 @@ def m3_scenario(
         ],
         seed=seed,
         rule_config=resolved_rule_config,
+    )
+
+
+def support_participant(
+    participant_id: str,
+    side: str,
+    deck: list[BattleCard],
+    *,
+    mp: int = 5,
+    ds: int = 20,
+    mpr: int = 1,
+) -> BattleParticipantSetup:
+    return BattleParticipantSetup(
+        participant_id=participant_id,
+        side=side,
+        character_master_id=f"character_{participant_id}",
+        max_hp=999,
+        max_mp=mp,
+        initial_hp=999,
+        initial_mp=mp,
+        ds=ds,
+        mpr=mpr,
+        hpr=99,
+        deck=deck,
+        slot_type="support",
+    )
+
+
+def m4_scenario(
+    participants: list[BattleParticipantSetup],
+    *,
+    seed: int = 1,
+    rule_config: BattleRuleConfig | None = None,
+) -> BattleScenario:
+    return BattleScenario(
+        battle_id="battle_m4_test_001",
+        participants=participants,
+        turn_order=[
+            "top_ally",
+            "top_enemy",
+            "mid_ally",
+            "mid_enemy",
+            "bot_ally",
+            "bot_enemy",
+            "support_ally",
+            "support_enemy",
+        ],
+        seed=seed,
+        rule_config=rule_config or BattleRuleConfig(nexus_max_hp=1),
     )
 
 
@@ -864,6 +959,275 @@ def test_m3_uses_fixed_lane_turn_order_and_snapshot_contract() -> None:
     assert replay.snapshots[0].applied_rule_config is not None
 
 
+def test_m4_runs_eight_slots_and_support_snapshot_has_no_lane_vitals() -> None:
+    participants = m3_lane_participants()
+    participants.extend(
+        [
+            support_participant(
+                "support_ally",
+                "ally",
+                [support_damage_card("card_support", 10, enabled=True, request_reduction=3)],
+            ),
+            support_participant(
+                "support_enemy",
+                "enemy",
+                [support_damage_card("card_support_enemy", 10, enabled=True, request_reduction=3)],
+            ),
+        ]
+    )
+
+    replay = BattleEngine().simulate(m4_scenario(participants))
+
+    actors = [event.actor_id for event in replay.events if event.event_type == "action_started"]
+    assert actors[:8] == [
+        "top_ally",
+        "top_enemy",
+        "mid_ally",
+        "mid_enemy",
+        "bot_ally",
+        "bot_enemy",
+        "support_ally",
+        "support_enemy",
+    ]
+    support = replay.snapshots[0].participants["support_ally"]
+    assert support.slot_type == "support"
+    assert support.hp is None
+    assert support.max_hp is None
+    assert support.hpr is None
+    assert support.alive is None
+    assert support.position is None
+    assert support.push is None
+    assert replay.snapshots[0].support_requests == {
+        "ally": {"top": 0, "mid": 0, "bot": 0},
+        "enemy": {"top": 0, "mid": 0, "bot": 0},
+    }
+
+
+def test_m4_support_card_selects_highest_request_and_reduces_declared_amount() -> None:
+    participants = m3_lane_participants(
+        top_ally_deck=[add_support_request_card("card_request", 2)],
+    )
+    participants[1] = m3_participant(
+        "top_enemy",
+        "enemy",
+        "top",
+        [m3_damage_card("card_wait", 0)],
+        hp=100,
+    )
+    participants.extend(
+        [
+            support_participant(
+                "support_ally",
+                "ally",
+                [support_damage_card("card_support", 10, enabled=True, request_reduction=3)],
+            ),
+            support_participant(
+                "support_enemy",
+                "enemy",
+                [support_damage_card("card_support_enemy", 1, enabled=True)],
+            ),
+        ]
+    )
+
+    replay = BattleEngine().simulate(m4_scenario(participants))
+
+    selected = next(
+        event
+        for event in replay.events
+        if event.event_type == "support_lane_selected" and event.actor_id == "support_ally"
+    )
+    assert selected.payload["selected_lane_id"] == "top"
+    assert selected.payload["selection_reason"] == "highest"
+    changed = [
+        event
+        for event in replay.events
+        if event.event_type == "support_request_changed"
+        and event.payload.get("source") == "support_card"
+    ]
+    assert changed[0].payload == {
+        "side": "ally",
+        "lane_id": "top",
+        "before": 2,
+        "requested_change": -3,
+        "applied_change": -2,
+        "after": 0,
+        "source": "support_card",
+    }
+
+
+def test_m4_normal_support_card_reduces_effect_and_request_by_default() -> None:
+    participants = m3_lane_participants(
+        top_ally_deck=[add_support_request_card("card_request", 5)],
+    )
+    participants[1] = m3_participant(
+        "top_enemy",
+        "enemy",
+        "top",
+        [m3_damage_card("card_wait", 0)],
+        hp=100,
+    )
+    participants.extend(
+        [
+            support_participant(
+                "support_ally",
+                "ally",
+                [support_damage_card("card_normal", 100, enabled=False)],
+            ),
+            support_participant(
+                "support_enemy",
+                "enemy",
+                [support_damage_card("card_support_enemy", 1, enabled=True)],
+            ),
+        ]
+    )
+
+    replay = BattleEngine().simulate(m4_scenario(participants))
+
+    damage = next(
+        event
+        for event in replay.events
+        if event.event_type == "damage_applied" and event.actor_id == "support_ally"
+    )
+    assert damage.payload["requested"] == 10
+    reduced = next(
+        event
+        for event in replay.events
+        if event.event_type == "support_effect_reduced" and event.actor_id == "support_ally"
+    )
+    assert reduced.payload["multiplier_bp"] == 1000
+    request = next(
+        event
+        for event in replay.events
+        if event.event_type == "support_request_changed"
+        and event.payload.get("source") == "normal_card"
+    )
+    assert request.payload["before"] == 5
+    assert request.payload["after"] == 4
+
+
+def test_m4_unplayable_support_card_does_not_reduce_request() -> None:
+    participants = m3_lane_participants(
+        top_ally_deck=[add_support_request_card("card_request", 5)],
+    )
+    participants.extend(
+        [
+            support_participant(
+                "support_ally",
+                "ally",
+                [
+                    support_damage_card(
+                        "card_hold",
+                        10,
+                        enabled=True,
+                        request_reduction=5,
+                        mp_cost=99,
+                    )
+                ],
+            ),
+            support_participant(
+                "support_enemy",
+                "enemy",
+                [support_damage_card("card_support_enemy", 1, enabled=True)],
+            ),
+        ]
+    )
+
+    replay = BattleEngine().simulate(m4_scenario(participants))
+
+    action_seven = replay.snapshots[7]
+    assert action_seven.support_requests["ally"]["top"] == 5
+    assert not any(
+        event.event_type == "support_request_changed"
+        and event.actor_id == "support_ally"
+        and event.payload.get("requested_change", 0) < 0
+        for event in replay.events
+    )
+
+
+def test_m4_zero_request_support_lane_selection_is_seed_deterministic() -> None:
+    participants = m3_lane_participants()
+    participants.extend(
+        [
+            support_participant(
+                "support_ally",
+                "ally",
+                [support_damage_card("card_support", 1, enabled=True)],
+            ),
+            support_participant(
+                "support_enemy",
+                "enemy",
+                [support_damage_card("card_support_enemy", 1, enabled=True)],
+            ),
+        ]
+    )
+
+    first = BattleEngine().simulate(m4_scenario(participants, seed=77))
+    second = BattleEngine().simulate(m4_scenario(participants, seed=77))
+
+    first_lanes = [
+        event.payload["selected_lane_id"]
+        for event in first.events
+        if event.event_type == "support_lane_selected"
+    ]
+    second_lanes = [
+        event.payload["selected_lane_id"]
+        for event in second.events
+        if event.event_type == "support_lane_selected"
+    ]
+    assert first_lanes == second_lanes
+    assert first_lanes
+
+
+def test_m4_support_adjacent_uses_selected_lane_and_never_targets_nexus() -> None:
+    participants = m3_lane_participants(
+        top_ally_deck=[add_support_request_card("card_request", 4)],
+    )
+    for index in (1, 3, 5):
+        enemy = participants[index]
+        participants[index] = m3_participant(
+            enemy.participant_id,
+            "enemy",
+            enemy.lane_id or "top",
+            [m3_damage_card(f"card_wait_{index}", 0)],
+            hp=1500,
+        )
+    participants.extend(
+        [
+            support_participant(
+                "support_ally",
+                "ally",
+                [
+                    support_damage_card(
+                        "card_adjacent_support",
+                        10,
+                        enabled=True,
+                        request_reduction=1,
+                        scope="adjacent",
+                    )
+                ],
+            ),
+            support_participant(
+                "support_enemy",
+                "enemy",
+                [support_damage_card("card_support_enemy", 1, enabled=True)],
+            ),
+        ]
+    )
+
+    replay = BattleEngine().simulate(m4_scenario(participants))
+
+    support_damage = next(
+        event
+        for event in replay.events
+        if event.event_type == "damage_applied" and event.actor_id == "support_ally"
+    )
+    assert support_damage.target_id == "mid_enemy"
+    assert not any(
+        event.event_type == "nexus_damaged" and event.actor_id == "support_ally"
+        for event in replay.events
+    )
+
+
 def test_m3_deck_runtime_draws_and_discards_oldest_on_overflow() -> None:
     cards = [m3_damage_card(f"card_{index}", 1, mp_cost=99) for index in range(8)]
     participants = m3_lane_participants(
@@ -1236,6 +1600,7 @@ def test_participant_adapter_builds_setup_from_character_master_v2() -> None:
             "resources": {"max_hp": 120, "max_mp": 20, "initial_mp": 10},
             "action_resources": {"ds": 10, "mpr": 8, "hpr": 2},
             "combat_stats": {"ad": 12, "ap": 0, "ar": 5, "mr": 3, "push": 50},
+            "trait_ids": ["trait_adjacent_splash"],
         },
         deck=[m3_damage_card("card_hit", 1)],
     )
@@ -1246,3 +1611,4 @@ def test_participant_adapter_builds_setup_from_character_master_v2() -> None:
     assert setup.hpr == 2
     assert setup.ad == 12
     assert setup.push == 50
+    assert setup.trait_ids == ("trait_adjacent_splash",)

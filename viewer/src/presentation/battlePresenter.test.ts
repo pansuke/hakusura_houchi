@@ -10,6 +10,7 @@
 - 手札0枚と全カード使用不能を区別する
 - Damageのbefore / afterが表示される
 - Battle終了時に次の行動者を表示しない
+- SUPPORT支援先・支援要請変化・通常カード減衰を表示する
 */
 
 import { describe, expect, test } from 'vitest'
@@ -358,5 +359,32 @@ describe('battlePresenter', () => {
     expect(phases[3].items.map((item) => item.label)).toContain('追加カード使用権：+1')
     expect(phases[4].items.map((item) => item.label)).toContain('敵Nexusに20ダメージ')
     expect(phases[4].items.map((item) => item.label)).toContain('敵Nexusを破壊しました')
+  })
+
+  test('renders support lane selection, request change and effect reduction', () => {
+    const phases = buildActionPhases(
+      snapshot,
+      [
+        event('support_lane_selected', {
+          selected_lane_id: 'mid',
+          requests: { top: 2, mid: 5, bot: 1 },
+          selection_reason: 'highest',
+        }),
+        event('support_effect_reduced', { effect_type: 'damage', multiplier_bp: 1000 }),
+        event('support_request_changed', {
+          lane_id: 'mid',
+          before: 5,
+          requested_change: -1,
+          applied_change: -1,
+          after: 4,
+          source: 'normal_card',
+        }),
+      ],
+      catalog,
+    )
+
+    expect(phases[1].items.map((item) => item.label)).toContain('支援先：MIDレーン')
+    expect(phases[4].items.map((item) => item.label)).toContain('通常カード効果：10%へ減少')
+    expect(phases[4].items.map((item) => item.label)).toContain('MID支援要請：5 → 4')
   })
 })

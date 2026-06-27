@@ -95,9 +95,13 @@ describe('ReplayInspector', () => {
     })
 
     await wrapper.get('[data-tab="config"]').trigger('click')
-    await wrapper.findAll('input')[0].setValue('4')
+    const inputs = wrapper.findAll('input')
+    for (const [index, input] of inputs.entries()) {
+      await input.setValue(String(index + 4))
+    }
     await wrapper.get('.config-inspector button').trigger('click')
 
+    expect(wrapper.emitted('update:rule-config')).toHaveLength(inputs.length)
     expect(wrapper.emitted('update:rule-config')?.[0]?.[0]).toEqual({ ...config, initial_hand_size: 4 })
     expect(wrapper.emitted('save-config')).toHaveLength(1)
   })

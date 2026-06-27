@@ -3,6 +3,10 @@
   "name": "ひっかき",
   "rarity": "common",
   "mp_cost": 0,
+  "support": {
+    "enabled": false,
+    "request_reduction": 0
+  },
   "effects": [
     {
       "type": "damage",

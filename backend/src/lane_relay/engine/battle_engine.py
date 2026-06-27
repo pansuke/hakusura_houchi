@@ -8,9 +8,18 @@ from typing import Literal
 Side = Literal["ally", "enemy"]
 BattleStatus = Literal["running", "completed"]
 BattleResult = Literal["undecided", "ally_win", "ally_loss", "draw"]
-EffectType = Literal["damage", "heal", "gain_mana", "draw_card", "grant_card_play"]
+EffectType = Literal[
+    "damage",
+    "heal",
+    "gain_mana",
+    "draw_card",
+    "grant_card_play",
+    "add_support_request",
+    "gain_draw_gauge",
+]
 EffectTarget = Literal["self", "enemy"]
 LaneId = Literal["top", "mid", "bot"]
+SlotType = Literal["lane", "support"]
 DamageType = Literal["physical", "magic", "true"]
 EffectScope = Literal["local", "adjacent", "global"]
 
@@ -26,12 +35,19 @@ M3_TURN_SLOTS: tuple[tuple[LaneId, Side], ...] = (
     ("bot", "ally"),
     ("bot", "enemy"),
 )
+M4_TURN_SLOTS: tuple[tuple[LaneId | Literal["support"], Side], ...] = (
+    *M3_TURN_SLOTS,
+    ("support", "ally"),
+    ("support", "enemy"),
+)
 ALLOWED_EFFECT_TYPES: set[str] = {
     "damage",
     "heal",
     "gain_mana",
     "draw_card",
     "grant_card_play",
+    "add_support_request",
+    "gain_draw_gauge",
 }
 ALLOWED_EFFECT_TARGETS: set[str] = {"self", "enemy"}
 ALLOWED_EFFECT_SCOPES: set[str] = {"local", "adjacent", "global"}
@@ -58,6 +74,8 @@ class BattleCard:
     card_id: str
     mp_cost: int
     effects: list[BattleEffect]
+    support_enabled: bool = False
+    support_request_reduction: int = 0
 
 
 @dataclass(frozen=True)
@@ -79,6 +97,8 @@ class BattleParticipantSetup:
     ar: int = 0
     mr: int = 0
     push: int = 0
+    slot_type: SlotType = "lane"
+    trait_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -97,6 +117,9 @@ class BattleRuleConfig:
     minimum_damage: int = 1
     simulation_safety_limit: int = 1000
     simulation_card_play_limit_per_action: int = 100
+    support_request_max: int = 9
+    support_normal_effect_multiplier_bp: int = 1000
+    support_normal_request_reduction: int = 1
 
 
 @dataclass(frozen=True)
@@ -125,14 +148,15 @@ class ParticipantSnapshot:
     participant_id: str
     character_master_id: str
     side: Side
-    hp: int
-    max_hp: int
+    slot_type: SlotType
+    hp: int | None
+    max_hp: int | None
     mp: int
     max_mp: int
-    alive: bool
+    alive: bool | None
     ds: int
     mpr: int
-    hpr: int
+    hpr: int | None
     ad: int
     ap: int
     ar: int
@@ -146,6 +170,7 @@ class ParticipantSnapshot:
     push: int | None = None
     engaged_with_participant_id: str | None = None
     respawn_turns_remaining: int | None = None
+    trait_ids: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -166,6 +191,7 @@ class BattleSnapshot:
     next_actor_id: str | None
     participants: dict[str, ParticipantSnapshot]
     nexus_states: dict[str, NexusSnapshot] = field(default_factory=dict)
+    support_requests: dict[Side, dict[LaneId, int]] = field(default_factory=dict)
     applied_rule_config: BattleRuleConfig | None = None
 
 
@@ -173,9 +199,9 @@ class BattleSnapshot:
 class ParticipantSummary:
     participant_id: str
     side: Side
-    hp: int
+    hp: int | None
     mp: int
-    alive: bool
+    alive: bool | None
     damage_dealt: int
     damage_taken: int
     cards_used: int
@@ -204,9 +230,9 @@ class BattleReplay:
 @dataclass
 class ParticipantRuntime:
     setup: BattleParticipantSetup
-    hp: int
+    hp: int | None
     mp: int
-    alive: bool
+    alive: bool | None
     draw_gauge: int = 0
     hand: list[BattleCard] = field(default_factory=list)
     draw_pile: list[BattleCard] = field(default_factory=list)
@@ -237,6 +263,15 @@ class BattleRuntime:
     nexus_states: dict[str, NexusSnapshot] = field(default_factory=dict)
     rule_config: BattleRuleConfig | None = None
     adjacent_selection_count: int = 0
+    support_lane_selection_count: dict[Side, int] = field(
+        default_factory=lambda: {"ally": 0, "enemy": 0}
+    )
+    support_requests: dict[Side, dict[LaneId, int]] = field(
+        default_factory=lambda: {
+            "ally": {"top": 0, "mid": 0, "bot": 0},
+            "enemy": {"top": 0, "mid": 0, "bot": 0},
+        }
+    )
 
 
 class EventRecorder:
@@ -376,25 +411,30 @@ class BattleEngine:
                     self._validate_effect_specific_fields(effect)
 
     def _validate_m3_scenario(self, scenario: BattleScenario) -> None:
-        if len(scenario.participants) != 6:
-            raise BattleScenarioError("M3 scenario must have exactly six participants.")
+        if len(scenario.participants) not in {6, 8}:
+            raise BattleScenarioError("M3/M4 scenario must have six or eight participants.")
         participant_ids = [participant.participant_id for participant in scenario.participants]
-        if len(set(participant_ids)) != 6:
+        if len(set(participant_ids)) != len(participant_ids):
             raise BattleScenarioError("participant_id must be unique.")
         by_slot = {
-            (participant.lane_id, participant.side): participant
+            (
+                "support" if participant.slot_type == "support" else participant.lane_id,
+                participant.side,
+            ): participant
             for participant in scenario.participants
         }
-        expected_slots = set(M3_TURN_SLOTS)
+        turn_slots = M4_TURN_SLOTS if len(scenario.participants) == 8 else M3_TURN_SLOTS
+        expected_slots = set(turn_slots)
         if set(by_slot) != expected_slots:
-            raise BattleScenarioError("M3 scenario must contain ally and enemy for top/mid/bot.")
+            raise BattleScenarioError(
+                "scenario must contain ally and enemy for every configured slot."
+            )
         expected_turn_order = [
-            by_slot[(lane_id, side)].participant_id for lane_id, side in M3_TURN_SLOTS
+            by_slot[(lane_id, side)].participant_id for lane_id, side in turn_slots
         ]
         if scenario.turn_order != expected_turn_order:
             raise BattleScenarioError(
-                "M3 turn_order must be top ally, top enemy, "
-                "mid ally, mid enemy, bot ally, bot enemy."
+                "turn_order must follow top/mid/bot and optional support fixed slots."
             )
         config = scenario.rule_config
         if (
@@ -419,6 +459,16 @@ class BattleEngine:
             raise BattleScenarioError(
                 "simulation_card_play_limit_per_action must be greater than 0."
             )
+        if config.support_request_max < 1:
+            raise BattleScenarioError("support_request_max must be greater than 0.")
+        if not 0 <= config.support_normal_effect_multiplier_bp <= 10000:
+            raise BattleScenarioError(
+                "support_normal_effect_multiplier_bp must be between 0 and 10000."
+            )
+        if config.support_normal_request_reduction < 0:
+            raise BattleScenarioError(
+                "support_normal_request_reduction must be greater than or equal to 0."
+            )
         if not (
             config.ally_nexus_position
             < config.initial_position
@@ -428,14 +478,17 @@ class BattleEngine:
         for participant in scenario.participants:
             if not participant.deck:
                 raise BattleScenarioError("deck must not be empty.")
-            if participant.initial_hp < 1 or participant.initial_hp > participant.max_hp:
+            if participant.slot_type == "support":
+                if participant.lane_id is not None:
+                    raise BattleScenarioError("support must not have lane_id.")
+            elif participant.initial_hp < 1 or participant.initial_hp > participant.max_hp:
                 raise BattleScenarioError("initial_hp must be between 1 and max_hp.")
             if participant.initial_mp < 0 or participant.initial_mp > participant.max_mp:
                 raise BattleScenarioError("initial_mp must be between 0 and max_mp.")
             combat_stats = (
                 participant.ds,
                 participant.mpr,
-                participant.hpr,
+                0 if participant.slot_type == "support" else participant.hpr,
                 participant.ad,
                 participant.ap,
                 participant.ar,
@@ -449,6 +502,14 @@ class BattleEngine:
                     raise BattleScenarioError("card mp_cost must be greater than or equal to 0.")
                 if not card.effects:
                     raise BattleScenarioError("card effects must not be empty.")
+                if card.support_request_reduction < 0:
+                    raise BattleScenarioError(
+                        "support_request_reduction must be greater than or equal to 0."
+                    )
+                if not card.support_enabled and card.support_request_reduction:
+                    raise BattleScenarioError(
+                        "normal card must not define support_request_reduction."
+                    )
                 for effect in card.effects:
                     if effect.effect_type not in ALLOWED_EFFECT_TYPES:
                         raise BattleScenarioError("effect_type must be supported.")
@@ -540,19 +601,27 @@ class BattleEngine:
             "simulation_card_play_limit_per_action": (
                 config.simulation_card_play_limit_per_action
             ),
+            "support_request_max": config.support_request_max,
+            "support_normal_effect_multiplier_bp": (
+                config.support_normal_effect_multiplier_bp
+            ),
+            "support_normal_request_reduction": (
+                config.support_normal_request_reduction
+            ),
         }
 
     def _create_m3_runtime(self, scenario: BattleScenario) -> BattleRuntime:
         config = scenario.rule_config
         participants: dict[str, ParticipantRuntime] = {}
         for setup in scenario.participants:
+            is_support = setup.slot_type == "support"
             runtime = ParticipantRuntime(
                 setup=setup,
-                hp=setup.initial_hp,
+                hp=None if is_support else setup.initial_hp,
                 mp=setup.initial_mp,
-                alive=True,
-                lane_id=setup.lane_id,
-                position=config.initial_position,
+                alive=None if is_support else True,
+                lane_id=None if is_support else setup.lane_id,
+                position=None if is_support else config.initial_position,
                 engaged_with_participant_id=None,
                 respawn_turns_remaining=None,
             )
@@ -639,6 +708,10 @@ class BattleEngine:
             actor_id=actor_id,
             lane_id=lane_id,
         )
+        if actor.setup.slot_type == "support":
+            self._run_support_action(runtime, recorder, actor)
+            self._record_m3_action_completed(runtime, recorder, actor)
+            return
         if not actor.alive:
             if actor.respawn_turns_remaining and actor.respawn_turns_remaining > 0:
                 before = actor.respawn_turns_remaining
@@ -671,6 +744,54 @@ class BattleEngine:
                 payload={"reason": "no_local_target_or_nexus"},
             )
         self._record_m3_action_completed(runtime, recorder, actor)
+
+    def _run_support_action(
+        self,
+        runtime: BattleRuntime,
+        recorder: EventRecorder,
+        actor: ParticipantRuntime,
+    ) -> None:
+        selected_lane, selection_reason = self._select_support_lane(runtime, actor)
+        recorder.record(
+            runtime.action_index,
+            "support_lane_selected",
+            actor_id=actor.setup.participant_id,
+            payload={
+                "selected_lane_id": selected_lane,
+                "requests": dict(runtime.support_requests[actor.setup.side]),
+                "selection_reason": selection_reason,
+            },
+        )
+        self._recover_mana(
+            runtime,
+            recorder,
+            actor,
+            actor.setup.mpr,
+            reason="action_right",
+        )
+        self._increase_m3_draw_gauge(runtime, recorder, actor)
+        self._attempt_m3_cards(runtime, recorder, actor, support_lane=selected_lane)
+
+    def _select_support_lane(
+        self,
+        runtime: BattleRuntime,
+        actor: ParticipantRuntime,
+    ) -> tuple[LaneId, str]:
+        requests = runtime.support_requests[actor.setup.side]
+        maximum = max(requests.values())
+        candidates = [lane_id for lane_id in M3_LANE_ORDER if requests[lane_id] == maximum]
+        if len(candidates) == 1:
+            return candidates[0], "highest"
+        count = runtime.support_lane_selection_count[actor.setup.side]
+        rng = self._rng(
+            runtime.scenario.seed,
+            "support_lane_selection",
+            actor.setup.participant_id,
+            count,
+        )
+        runtime.support_lane_selection_count[actor.setup.side] += 1
+        reason = "all_zero_random" if maximum == 0 else "highest_tie_random"
+        return rng.choice(candidates), reason
 
     def _record_m3_action_completed(
         self,
@@ -868,6 +989,69 @@ class BattleEngine:
         for _draw_index in range(trigger_count):
             self._draw_one_m3(runtime, recorder, participant, draw_source="draw_gauge")
 
+    def _gain_draw_gauge_m3(
+        self,
+        runtime: BattleRuntime,
+        recorder: EventRecorder,
+        participant: ParticipantRuntime,
+        amount: int,
+    ) -> None:
+        config = runtime.scenario.rule_config
+        before = participant.draw_gauge
+        participant.draw_gauge += amount
+        trigger_count = participant.draw_gauge // config.draw_gauge_threshold
+        participant.draw_gauge %= config.draw_gauge_threshold
+        recorder.record(
+            runtime.action_index,
+            "gauge_changed",
+            actor_id=participant.setup.participant_id,
+            lane_id=participant.lane_id,
+            payload={
+                "gauge_type": "draw",
+                "before": before,
+                "gain": amount,
+                "trigger_count": trigger_count,
+                "after": participant.draw_gauge,
+                "reason": "card_effect",
+                "blocked_reason": None,
+            },
+        )
+        for _draw_index in range(trigger_count):
+            self._draw_one_m3(runtime, recorder, participant, draw_source="card_effect")
+
+    def _change_support_request(
+        self,
+        runtime: BattleRuntime,
+        recorder: EventRecorder,
+        *,
+        actor_id: str,
+        side: Side,
+        lane_id: LaneId,
+        change: int,
+        source: str,
+    ) -> None:
+        before = runtime.support_requests[side][lane_id]
+        after = min(
+            runtime.scenario.rule_config.support_request_max,
+            max(0, before + change),
+        )
+        runtime.support_requests[side][lane_id] = after
+        recorder.record(
+            runtime.action_index,
+            "support_request_changed",
+            actor_id=actor_id,
+            lane_id=lane_id,
+            payload={
+                "side": side,
+                "lane_id": lane_id,
+                "before": before,
+                "requested_change": change,
+                "applied_change": after - before,
+                "after": after,
+                "source": source,
+            },
+        )
+
     def _draw_one_m3(
         self,
         runtime: BattleRuntime,
@@ -940,6 +1124,7 @@ class BattleEngine:
         runtime: BattleRuntime,
         recorder: EventRecorder,
         actor: ParticipantRuntime,
+        support_lane: LaneId | None = None,
     ) -> None:
         remaining_card_plays = 1
         card_play_count = 0
@@ -949,7 +1134,9 @@ class BattleEngine:
             and runtime.battle_status == "running"
         ):
             card = actor.hand[0]
-            targets = self._m3_targets_for_card(runtime, recorder, actor, card)
+            targets = self._m3_targets_for_card(
+                runtime, recorder, actor, card, support_lane=support_lane
+            )
             playable = bool(targets) and actor.mp >= card.mp_cost
             primary_target_id = self._target_id_for_payload(targets[0]) if targets else None
             recorder.record(
@@ -995,6 +1182,7 @@ class BattleEngine:
                 targets,
                 card_play_index=card_play_count,
                 remaining_card_plays=remaining_card_plays,
+                support_lane=support_lane,
             )
 
     def _use_m3_card(
@@ -1006,6 +1194,7 @@ class BattleEngine:
         targets: list[ParticipantRuntime | str],
         card_play_index: int,
         remaining_card_plays: int,
+        support_lane: LaneId | None = None,
     ) -> int:
         granted_card_plays = 0
         actor.hand.pop(0)
@@ -1039,7 +1228,9 @@ class BattleEngine:
             },
         )
         for effect in card.effects:
-            effect_targets = self._m3_targets_for_effect(runtime, recorder, actor, effect)
+            effect_targets = self._m3_targets_for_effect(
+                runtime, recorder, actor, effect, support_lane=support_lane
+            )
             for target in effect_targets:
                 granted_card_plays += self._resolve_m3_effect(
                     runtime,
@@ -1049,12 +1240,28 @@ class BattleEngine:
                     effect,
                     card_play_index=card_play_index,
                     remaining_card_plays=remaining_card_plays + granted_card_plays,
+                    support_card_enabled=card.support_enabled,
                 )
                 if runtime.battle_status == "completed":
                     break
             if runtime.battle_status == "completed":
                 break
         actor.discard_pile.append(card)
+        if actor.setup.slot_type == "support" and support_lane is not None:
+            reduction = (
+                card.support_request_reduction
+                if card.support_enabled
+                else runtime.scenario.rule_config.support_normal_request_reduction
+            )
+            self._change_support_request(
+                runtime,
+                recorder,
+                actor_id=actor.setup.participant_id,
+                side=actor.setup.side,
+                lane_id=support_lane,
+                change=-reduction,
+                source="support_card" if card.support_enabled else "normal_card",
+            )
         return granted_card_plays
 
     def _resolve_m3_effect(
@@ -1066,16 +1273,60 @@ class BattleEngine:
         effect: BattleEffect,
         card_play_index: int,
         remaining_card_plays: int,
+        support_card_enabled: bool = True,
     ) -> int:
+        support_penalty = actor.setup.slot_type == "support" and not support_card_enabled
+        multiplier_bp = (
+            runtime.scenario.rule_config.support_normal_effect_multiplier_bp
+            if support_penalty
+            else 10000
+        )
+        if support_penalty and effect.effect_type in {"damage", "heal", "gain_draw_gauge"}:
+            recorder.record(
+                runtime.action_index,
+                "support_effect_reduced",
+                actor_id=actor.setup.participant_id,
+                target_id=self._target_id_for_payload(target),
+                payload={
+                    "effect_type": effect.effect_type,
+                    "multiplier_bp": multiplier_bp,
+                },
+            )
         if effect.effect_type == "damage":
-            self._damage_m3(runtime, recorder, actor, target, effect)
+            self._damage_m3(
+                runtime, recorder, actor, target, effect, multiplier_bp=multiplier_bp
+            )
         elif isinstance(target, ParticipantRuntime) and effect.effect_type == "heal":
-            self._heal(runtime, recorder, actor, target, effect.value, reason="card_effect")
+            self._heal(
+                runtime,
+                recorder,
+                actor,
+                target,
+                effect.value * multiplier_bp // 10000,
+                reason="card_effect",
+            )
         elif isinstance(target, ParticipantRuntime) and effect.effect_type == "gain_mana":
             self._gain_mana(runtime, recorder, target, effect.value, reason="card_effect")
         elif isinstance(target, ParticipantRuntime) and effect.effect_type == "draw_card":
             for _draw_index in range(effect.value):
                 self._draw_one_m3(runtime, recorder, target, draw_source="card_effect")
+        elif isinstance(target, ParticipantRuntime) and effect.effect_type == "gain_draw_gauge":
+            self._gain_draw_gauge_m3(
+                runtime,
+                recorder,
+                target,
+                effect.value * multiplier_bp // 10000,
+            )
+        elif effect.effect_type == "add_support_request" and actor.lane_id is not None:
+            self._change_support_request(
+                runtime,
+                recorder,
+                actor_id=actor.setup.participant_id,
+                side=actor.setup.side,
+                lane_id=actor.lane_id,
+                change=effect.value,
+                source="lane_card",
+            )
         elif isinstance(target, ParticipantRuntime) and effect.effect_type == "grant_card_play":
             recorder.record(
                 runtime.action_index,
@@ -1099,8 +1350,11 @@ class BattleEngine:
         actor: ParticipantRuntime,
         target: ParticipantRuntime | str,
         effect: BattleEffect,
+        multiplier_bp: int = 10000,
     ) -> None:
-        requested = self._calculate_m3_damage(runtime, actor, target, effect)
+        requested = self._calculate_m3_damage(
+            runtime, actor, target, effect, multiplier_bp=multiplier_bp
+        )
         if isinstance(target, ParticipantRuntime):
             before = target.hp
             target.hp = max(0, target.hp - requested)
@@ -1173,6 +1427,7 @@ class BattleEngine:
         actor: ParticipantRuntime,
         target: ParticipantRuntime | str,
         effect: BattleEffect,
+        multiplier_bp: int = 10000,
     ) -> int:
         config = runtime.scenario.rule_config
         raw_bp = (effect.base_damage if effect.base_damage is not None else effect.value) * 10000
@@ -1180,6 +1435,7 @@ class BattleEngine:
             stat = scaling.get("stat", "")
             ratio_bp = scaling.get("ratio_bp", 0)
             raw_bp += self._m3_stat_value(actor, stat) * ratio_bp
+        raw_bp = raw_bp * multiplier_bp // 10000
         if effect.damage_type == "true":
             final = raw_bp // 10000
         else:
@@ -1219,12 +1475,17 @@ class BattleEngine:
         recorder: EventRecorder,
         actor: ParticipantRuntime,
         card: BattleCard,
+        support_lane: LaneId | None = None,
     ) -> list[ParticipantRuntime | str]:
         for effect in card.effects:
-            targets = self._m3_targets_for_effect(runtime, recorder, actor, effect)
+            targets = self._m3_targets_for_effect(
+                runtime, recorder, actor, effect, support_lane=support_lane
+            )
             if not targets:
                 return []
-        return self._m3_targets_for_effect(runtime, recorder, actor, card.effects[0])
+        return self._m3_targets_for_effect(
+            runtime, recorder, actor, card.effects[0], support_lane=support_lane
+        )
 
     def _m3_targets_for_effect(
         self,
@@ -1232,9 +1493,14 @@ class BattleEngine:
         recorder: EventRecorder,
         actor: ParticipantRuntime,
         effect: BattleEffect,
+        support_lane: LaneId | None = None,
     ) -> list[ParticipantRuntime | str]:
+        if actor.setup.slot_type == "support":
+            return self._support_targets_for_effect(
+                runtime, recorder, actor, effect, support_lane
+            )
         if effect.target == "self":
-            return [actor] if actor.alive else []
+            return [actor] if actor.alive is True else []
         if effect.scope == "local":
             opponent = self._lane_opponent(runtime, actor)
             if (
@@ -1274,6 +1540,66 @@ class BattleEngine:
                 payload={"reason": "no_valid_global_target"},
             )
         return targets
+
+    def _support_targets_for_effect(
+        self,
+        runtime: BattleRuntime,
+        recorder: EventRecorder,
+        actor: ParticipantRuntime,
+        effect: BattleEffect,
+        support_lane: LaneId | None,
+    ) -> list[ParticipantRuntime | str]:
+        if support_lane is None:
+            return []
+        if effect.effect_type in {"gain_mana", "draw_card", "grant_card_play"}:
+            return [actor] if effect.target == "self" else []
+        if effect.effect_type == "add_support_request":
+            return []
+        target_side = (
+            actor.setup.side
+            if effect.target == "self"
+            else self._opposite_side(actor.setup.side)
+        )
+        lanes = self._support_scope_lanes(runtime, actor, support_lane, effect.scope)
+        candidates = [
+            participant
+            for lane_id in lanes
+            for participant in runtime.participants.values()
+            if participant.setup.slot_type == "lane"
+            and participant.lane_id == lane_id
+            and participant.setup.side == target_side
+            and participant.alive is True
+        ]
+        if not candidates:
+            recorder.record(
+                runtime.action_index,
+                "target_selection_failed",
+                actor_id=actor.setup.participant_id,
+                payload={"reason": "no_valid_support_target", "selected_lane_id": support_lane},
+            )
+        return candidates
+
+    def _support_scope_lanes(
+        self,
+        runtime: BattleRuntime,
+        actor: ParticipantRuntime,
+        support_lane: LaneId,
+        scope: EffectScope,
+    ) -> list[LaneId]:
+        if scope == "local":
+            return [support_lane]
+        if scope == "global":
+            return list(M3_LANE_ORDER)
+        if support_lane in {"top", "bot"}:
+            return ["mid"]
+        rng = self._rng(
+            runtime.scenario.seed,
+            "support_adjacent_target_selection",
+            actor.setup.participant_id,
+            runtime.adjacent_selection_count,
+        )
+        runtime.adjacent_selection_count += 1
+        return [rng.choice(["top", "bot"])]
 
     def _adjacent_targets(
         self,
@@ -1858,14 +2184,23 @@ class BattleEngine:
                     participant_id=participant_id,
                     character_master_id=participant.setup.character_master_id,
                     side=participant.setup.side,
+                    slot_type=participant.setup.slot_type,
                     hp=participant.hp,
-                    max_hp=participant.setup.max_hp,
+                    max_hp=(
+                        None
+                        if participant.setup.slot_type == "support"
+                        else participant.setup.max_hp
+                    ),
                     mp=participant.mp,
                     max_mp=participant.setup.max_mp,
                     alive=participant.alive,
                     ds=participant.setup.ds,
                     mpr=participant.setup.mpr,
-                    hpr=participant.setup.hpr,
+                    hpr=(
+                        None
+                        if participant.setup.slot_type == "support"
+                        else participant.setup.hpr
+                    ),
                     ad=participant.setup.ad,
                     ap=participant.setup.ap,
                     ar=participant.setup.ar,
@@ -1876,13 +2211,22 @@ class BattleEngine:
                     discard_pile=[card.card_id for card in participant.discard_pile],
                     lane_id=participant.lane_id,
                     position=participant.position,
-                    push=participant.setup.push if participant.lane_id else None,
+                    push=(
+                        participant.setup.push
+                        if participant.setup.slot_type == "lane" and participant.lane_id
+                        else None
+                    ),
                     engaged_with_participant_id=participant.engaged_with_participant_id,
                     respawn_turns_remaining=participant.respawn_turns_remaining,
+                    trait_ids=list(participant.setup.trait_ids),
                 )
                 for participant_id, participant in runtime.participants.items()
             },
             nexus_states=dict(runtime.nexus_states),
+            support_requests={
+                side: dict(requests)
+                for side, requests in runtime.support_requests.items()
+            },
             applied_rule_config=runtime.rule_config,
         )
 
